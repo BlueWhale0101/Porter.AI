@@ -5,11 +5,16 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "mcp": "node mcp/server.mjs"
+    "mcp": "node mcp/server.mjs",
+    "build": "vite build",
+    "dev": "vite"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
     "@supabase/supabase-js": "^2.117.2",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "vite": "^6.4.3"
   }
 }
