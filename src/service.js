@@ -9,9 +9,11 @@ export class PorterService {
   getTrip(ownerId, id) { return this.#owned(ownerId, this.trips, id); }
   updateTrip(ownerId,id,patch,revision) { return this.#update(ownerId,this.trips,id,patch,revision); }
   createEvent(ownerId,tripId,input) { this.getTrip(ownerId,tripId); if (input.parentEventId && this.getEvent(ownerId,input.parentEventId).tripId !== tripId) throw new Error('Parent Event must belong to the same Trip'); const event = newEvent(input,tripId); this.events.set(event.id,event); return event; }
+  listEvents(ownerId,tripId) { this.getTrip(ownerId,tripId); return [...this.events.values()].filter(e => e.tripId === tripId); }
   getEvent(ownerId,id) { const e=this.events.get(id); this.getTrip(ownerId,e?.tripId); return e; }
   updateEvent(ownerId,id,patch,revision) { const e=this.getEvent(ownerId,id); const next=revise(e,patch,revision); this.events.set(id,next); return next; }
   createKnowledge(ownerId,tripId,input) { this.getTrip(ownerId,tripId); const item=newKnowledge(input,tripId); this.knowledge.set(item.id,item); return item; }
+  listKnowledge(ownerId,tripId) { this.getTrip(ownerId,tripId); return [...this.knowledge.values()].filter(k => k.tripId === tripId); }
   getKnowledge(ownerId,id) { const k=this.knowledge.get(id); this.getTrip(ownerId,k?.tripId); return k; }
   updateKnowledge(ownerId,id,patch,revision) { const k=this.getKnowledge(ownerId,id); const next=revise(k,patch,revision); this.knowledge.set(id,next); return next; }
   attachArtifact(ownerId,eventId,artifact,revision) { const e=this.getEvent(ownerId,eventId); return this.updateEvent(ownerId,eventId,{artifacts:[...e.artifacts,artifact]},revision); }

@@ -9,7 +9,8 @@ function event(service,trip,input) { return service.createEvent(owner,trip.id,{t
 
 test('creates a generic sparse Event without a type', () => {
   const {service,trip}=setup(); const item=event(service,trip,{});
-  assert.equal(item.movement,false); assert.deepEqual(item.temporal,{}); assert.equal(item.revision,1);
+  service.createKnowledge(owner,trip.id,{title:'Room',content:'814'});
+  assert.equal(item.movement,false); assert.deepEqual(item.temporal,{}); assert.equal(item.revision,1); assert.equal(service.listEvents(owner,trip.id).length,1); assert.equal(service.listKnowledge(owner,trip.id).length,1);
 });
 test('movement preserves cross-timezone local expressions and rejects ordinary location', () => {
   const {service,trip}=setup(); const item=event(service,trip,{movement:true,temporal:{start:'2026-11-19T09:00:00+09:30',startTimezone:'Australia/Darwin',end:'2026-11-19T07:30:00-08:00',endTimezone:'America/Los_Angeles'},spatial:{origin:{label:'Alice Springs'},destination:{label:'Los Angeles'}}});
