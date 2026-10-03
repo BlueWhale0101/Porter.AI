@@ -5,6 +5,9 @@ import { ConflictError } from '../src/domain.js';
 import { NotFoundError, SupabasePorterRepository, tripFromRow, tripToRow, eventFromRow, eventToRow, knowledgeFromRow, knowledgeToRow } from '../src/repository.js';
 import { SupabaseArtifactStorage } from '../src/supabase-storage.js';
 import { errorCode, mcpError } from '../mcp/server.mjs';
+import { createPorterMcpServer, bearerToken } from '../mcp/server.mjs';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 class MemoryRepository {
   constructor() { this.trips=new Map(); this.events=new Map(); this.knowledge=new Map(); }
@@ -34,8 +37,15 @@ test('persistent get_trip_context and source export preserve projection semantic
   const {service,trip}=await setup(); const hotel=await service.createEvent(trip.id,{title:'Hotel',accommodation:true,temporal:{start:'2026-11-22T00:00:00Z',end:'2026-11-24T00:00:00Z'}}); await service.createKnowledge(trip.id,{title:'Room',content:'814',relatedEventIds:[hotel.id]}); const context=await service.tripContext(trip.id,{now:'2026-11-23T12:00:00Z'}); const source=JSON.parse(await service.exportTrip(trip.id,'json'));
   assert.equal(context.current.accommodation[0].knowledge[0].content,'814'); assert.equal(source.events[0].id,hotel.id);
 });
-test('Supabase Storage provider remains opaque and verifies checksums through a client seam', async()=>{
-  const objects=new Map(); const client={storage:{from:bucket=>({upload:async(key,data)=>{objects.set(`${bucket}/${key}`,data);return {error:null};},download:async key=>({data:new Blob([objects.get(`${bucket}/${key}`)]),error:null}),remove:async keys=>{keys.forEach(k=>objects.delete(`${bucket}/${k}`));return {error:null};},list:async()=>({data:[{name:'pass.pdf'}],error:null}),createSignedUrl:async key=>({data:{signedUrl:`https://signed/${bucket}/${key}`},error:null})})}}; const store=new SupabaseArtifactStorage(client,'porter-artifacts'); const ref=await store.put({key:'owner/pass.pdf',data:'hello',contentType:'text/plain'});
+test('artifact metadata rejects malformed or foreign Supabase references', async()=>{
+  const {service,trip}=await setup(); const event=await service.createEvent(trip.id,{title:'Opera'}); await assert.rejects(service.attachArtifactMetadata(event.id,{id:'ticket'},event.revision),/role is required/); await assert.rejects(service.attachArtifactMetadata(event.id,{id:'ticket',role:'ticket',mediaType:'application/pdf',storageRef:{provider:'supabase-storage',bucket:'porter-artifacts',key:'foreign'},offlineRequired:true,version:'v1'},event.revision),/Porter-owned/);
+});
+test('Supabase Storage provider owns Porter paths and verifies checksums through a client seam', async()=>{
+  const objects=new Map(); const client={storage:{from:bucket=>({upload:async(key,data)=>{objects.set(`${bucket}/${key}`,data);return {error:null};},download:async key=>({data:new Blob([objects.get(`${bucket}/${key}`)]),error:null}),remove:async keys=>{keys.forEach(k=>objects.delete(`${bucket}/${k}`));return {error:null};},list:async()=>({data:[{name:'original'}],error:null}),createSignedUrl:async key=>({data:{signedUrl:`https://signed/${bucket}/${key}`},error:null})})}}; const store=new SupabaseArtifactStorage(client,'porter-artifacts'); const ref=await store.put({tripId:'trip',eventId:'event',artifactId:'artifact',filename:'pass.pdf',data:'hello',contentType:'text/plain'});
   assert.equal(await store.exists(ref),true); assert.equal(await store.checksum(ref),'2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'); assert.match((await store.downloadReference(ref)).url,/signed/); await store.delete(ref);
 });
 test('MCP failures use structured semantic codes', ()=>{ const result=mcpError(new HierarchyError('cycle')); assert.equal(errorCode(new ConflictError('x',1,2)),'revision_conflict'); assert.equal(JSON.parse(result.content[0].text).error.code,'invalid_hierarchy'); });
+test('MCP server invokes semantic create_trip and get_trip_context tools end-to-end', async()=>{
+  const {service}=await setup(); const server=createPorterMcpServer(service); const [clientTransport,serverTransport]=InMemoryTransport.createLinkedPair(); const client=new Client({name:'porter-mcp-test',version:'1.0.0'}); await server.connect(serverTransport); await client.connect(clientTransport); const created=await client.callTool({name:'create_trip',arguments:{trip:{title:'MCP trip'}}}); const trip=JSON.parse(created.content[0].text); const context=await client.callTool({name:'get_trip_context',arguments:{tripId:trip.id,now:'2026-11-23T12:00:00Z'}}); assert.equal(JSON.parse(context.content[0].text).trip.title,'MCP trip'); await client.close(); await server.close();
+});
+test('MCP bearer parsing rejects missing identity', ()=>{ assert.equal(bearerToken('Bearer token-value'),'token-value'); assert.throws(()=>bearerToken(),/required/); });

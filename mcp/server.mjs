@@ -6,6 +6,7 @@ import { createAuthenticatedPorterRuntime } from '../src/runtime.js';
 import { ConflictError } from '../src/domain.js';
 import { HierarchyError } from '../src/persistent-service.js';
 import { NotFoundError, OwnershipError } from '../src/repository.js';
+import { AuthenticationError } from '../src/runtime.js';
 
 const json = value => ({content:[{type:'text',text:JSON.stringify(value,null,2)}]});
 export const mcpError = error => ({isError:true,content:[{type:'text',text:JSON.stringify({error:{code:errorCode(error),message:error.message}})}]});
@@ -28,12 +29,13 @@ export function createPorterMcpServer(service) {
   for(const [name,method,id] of [['export_trip','exportTrip','tripId'],['export_event','exportEvent','eventId'],['export_knowledge','exportKnowledge','knowledgeId']]) server.registerTool(name,{description:`Export ${name.slice(7)} source truth as text or JSON.`,inputSchema:{[id]:z.string().uuid(),format:z.enum(['text','json']).default('text')}},invoke(x=>service[method](x[id],x.format)));
   return server;
 }
-export function errorCode(error) { if(error instanceof ConflictError) return 'revision_conflict'; if(error instanceof HierarchyError) return 'invalid_hierarchy'; if(error instanceof NotFoundError) return 'not_found'; if(error instanceof OwnershipError) return 'ownership_denied'; return 'invalid_semantic_input'; }
+export function errorCode(error) { if(error instanceof AuthenticationError) return 'authentication_failed'; if(error instanceof ConflictError) return 'revision_conflict'; if(error instanceof HierarchyError) return 'invalid_hierarchy'; if(error instanceof NotFoundError) return 'not_found'; if(error instanceof OwnershipError) return 'ownership_denied'; if(error?.name==='StorageError') return 'storage_error'; if(error?.name==='BackendError' || error?.code || error?.status>=500) return 'backend_error'; return 'invalid_semantic_input'; }
+export function bearerToken(header) { const match=/^Bearer\s+(.+)$/i.exec(header??''); if(!match) throw new AuthenticationError('Bearer token is required'); return match[1]; }
 
 if(import.meta.url===`file://${process.argv[1]}`) {
   const port=Number(process.env.PORTER_MCP_PORT ?? 8788); const host=process.env.PORTER_MCP_HOST ?? '127.0.0.1';
   const app=createMcpExpressApp();
   app.get('/health',(_req,res)=>res.json({ok:true,service:'Porter.AI'}));
-  app.post('/mcp',async(req,res)=>{ const {service}=await createAuthenticatedPorterRuntime(); const server=createPorterMcpServer(service); const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined}); try { await server.connect(transport); await transport.handleRequest(req,res,req.body); } catch(error) { if(!res.headersSent) res.status(500).json({jsonrpc:'2.0',error:{code:-32603,message:'Porter MCP server error'},id:null}); } finally { res.on('close',()=>{ transport.close(); server.close(); }); } });
+  app.post('/mcp',async(req,res)=>{ let transport; let server; try { const {service}=await createAuthenticatedPorterRuntime(bearerToken(req.headers.authorization)); server=createPorterMcpServer(service); transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined}); await server.connect(transport); await transport.handleRequest(req,res,req.body); } catch(error) { if(!res.headersSent) res.status(error instanceof AuthenticationError?401:500).json({jsonrpc:'2.0',error:{code:-32603,message:error instanceof AuthenticationError?'Authentication failed':'Porter MCP server error'},id:null}); } finally { if(transport&&server) res.on('close',()=>{ transport.close(); server.close(); }); } });
   app.listen(port,host,()=>console.log(`Porter MCP listening on http://${host}:${port}/mcp`));
 }
