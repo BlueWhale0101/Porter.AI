@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PorterService } from '../src/service.js';
 import { ConflictError } from '../src/domain.js';
+import { ArtifactStorage } from '../src/storage.js';
 
 const owner = 'owner-1'; const NOW = '2026-11-23T12:00:00.000Z';
 function setup() { const service=new PorterService(); const trip=service.createTrip(owner,{title:'LA home leave',participants:[{id:'wes',name:'Wes'},{id:'skye',name:'Skye'},{id:'tor',name:'Tor'}]}); return {service,trip}; }
@@ -11,6 +12,9 @@ test('creates a generic sparse Event without a type', () => {
   const {service,trip}=setup(); const item=event(service,trip,{});
   service.createKnowledge(owner,trip.id,{title:'Room',content:'814'});
   assert.equal(item.movement,false); assert.deepEqual(item.temporal,{}); assert.equal(item.revision,1); assert.equal(service.listEvents(owner,trip.id).length,1); assert.equal(service.listKnowledge(owner,trip.id).length,1);
+});
+test('artifact storage contract includes checksum verification', () => {
+  assert.equal(typeof new ArtifactStorage().checksum,'function');
 });
 test('movement preserves cross-timezone local expressions and rejects ordinary location', () => {
   const {service,trip}=setup(); const item=event(service,trip,{movement:true,temporal:{start:'2026-11-19T09:00:00+09:30',startTimezone:'Australia/Darwin',end:'2026-11-19T07:30:00-08:00',endTimezone:'America/Los_Angeles'},spatial:{origin:{label:'Alice Springs'},destination:{label:'Los Angeles'}}});

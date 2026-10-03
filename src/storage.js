@@ -5,4 +5,5 @@ export class ArtifactStorage {
   async delete(_storageRef) { throw new Error('Not implemented'); }
   async exists(_storageRef) { throw new Error('Not implemented'); }
   async downloadReference(_storageRef) { throw new Error('Not implemented'); }
+  async checksum(_storageRef) { throw new Error('Not implemented'); }
 }
