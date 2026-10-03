@@ -11,6 +11,7 @@ const localParts = (value, timeZone) => {
 };
 
 export function localDateTimeValue(value, timeZone) {
+  if (value && !timeZone) return '';
   const parts = localParts(value, timeZone);
   if (!parts) return '';
   const date = new Date(value);
@@ -23,7 +24,7 @@ export function localDateTimeValue(value, timeZone) {
 /** Converts a datetime-local value in the supplied Event zone to a source instant. */
 export function zonedDateTimeToIso(value, timeZone) {
   if (!value) return null;
-  if (!timeZone) return new Date(value).toISOString();
+  if (!timeZone) throw new TypeError('A timezone is required when entering an Event time.');
   const [date,time] = value.split('T'); const [year,month,day]=date.split('-').map(Number); const [hour,minute]=time.split(':').map(Number);
   const guess=Date.UTC(year,month-1,day,hour,minute);
   const format = instant => { const x=localParts(new Date(instant).toISOString(),timeZone); return x ? x.day.replaceAll('-','') + String(Math.floor(x.minute/60)).padStart(2,'0') + String(x.minute%60).padStart(2,'0') : ''; };
@@ -81,12 +82,13 @@ const durationMinutes = event => {
   return Math.max(30, Math.min(12 * 60, Math.round((end - start) / 60000)));
 };
 
-export function calendarProjection(packet) {
+export function calendarProjection(packet, { now = new Date().toISOString() } = {}) {
   const itinerary = itineraryProjection(packet), dated = itinerary.days;
   if (!dated.length) return { days: [], startHour: 6, endHour: 22 };
   const allDays = dateRange(dated[0].day, dated[dated.length - 1].day);
   const events = Object.values(packet.events ?? {}), childIds = new Set(events.map(event => event.parentEventId).filter(Boolean));
   const leaves = events.filter(event => !childIds.has(event.id) && eventLocalDay(event) && eventLocalMinute(event) != null);
+  const currentDays = new Set(leaves.map(event => localParts(now, event.temporal?.startTimezone)?.day).filter(Boolean));
   const days = allDays.map(day => {
     const blocks = leaves.filter(event => eventLocalDay(event) === day).sort(compareEvents).map(event => ({ event, start: eventLocalMinute(event), duration: durationMinutes(event), lane: 0, lanes: 1 }));
     const active=[];
@@ -95,7 +97,7 @@ export function calendarProjection(packet) {
       const used = new Set(active.map(item => item.lane)); while(used.has(block.lane)) block.lane++;
       active.push(block); const lanes = Math.max(...active.map(item => item.lane + 1)); active.forEach(item => item.lanes = Math.max(item.lanes, lanes));
     }
-    return { day, blocks };
+    return { day, blocks, current: currentDays.has(day) };
   });
   const minutes = leaves.flatMap(event => [eventLocalMinute(event), eventLocalMinute(event) + durationMinutes(event)]);
   return { days, startHour: Math.max(0, Math.floor(Math.min(...minutes, 360) / 60)), endHour: Math.min(24, Math.ceil(Math.max(...minutes, 1320) / 60)) };
