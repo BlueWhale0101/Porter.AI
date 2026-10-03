@@ -12,6 +12,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
     "@supabase/supabase-js": "^2.117.2",
+    "jsbarcode": "^3.12.3",
+    "qrcode": "^1.5.4",
     "zod": "^3.25.76"
   },
   "devDependencies": {

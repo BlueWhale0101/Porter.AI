@@ -33,6 +33,11 @@ export function validateArtifact(artifact) {
   if (!artifact.storageRef || typeof artifact.storageRef !== 'object' || typeof artifact.storageRef.provider !== 'string' || !artifact.storageRef.provider) throw new TypeError('Artifact storageRef.provider is required');
   if (typeof artifact.offlineRequired !== 'boolean') throw new TypeError('Artifact offlineRequired must be boolean');
   for (const field of ['participantIds','satisfiesAdmissionIds']) if (artifact[field] != null && (!Array.isArray(artifact[field]) || artifact[field].some(x=>typeof x !== 'string' || !x))) throw new TypeError(`Artifact ${field} must be string IDs`);
+  if (artifact.code != null) validateArtifactCode(artifact.code);
+}
+export function validateArtifactCode(code) {
+  if (!code || typeof code !== 'object' || typeof code.value !== 'string' || !code.value.trim()) throw new TypeError('Artifact code.value is required');
+  if (!new Set(['qr','code128','code39','ean13','upca']).has(String(code.format).toLowerCase())) throw new TypeError('Unsupported artifact code.format');
 }
 
 export function newKnowledge(input, tripId) {
