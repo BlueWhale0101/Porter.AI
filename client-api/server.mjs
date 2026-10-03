@@ -6,6 +6,7 @@ import { bearerToken } from '../mcp/server.mjs';
 /** The browser boundary deliberately accepts only offline-safe semantic operations. */
 export const clientMutations={
   createKnowledge:(service,args)=>service.createKnowledge(args.tripId,args.knowledge),
+  setCurrentParking:(service,args)=>service.setCurrentParking(args.tripId,args.knowledge),
   createEvent:(service,args)=>service.createEvent(args.tripId,args.event),
   updateEvent:(service,args)=>service.updateEvent(args.eventId,args.patch,args.expectedRevision),
   updateKnowledge:(service,args)=>service.updateKnowledge(args.knowledgeId,args.patch,args.expectedRevision)
