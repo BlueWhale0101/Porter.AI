@@ -10,7 +10,7 @@ create table public.travel_events (
   parent_event_id uuid references public.travel_events(id) on delete cascade, title text not null, description text,
   participants jsonb not null default '[]'::jsonb, temporal jsonb not null default '{}'::jsonb, spatial jsonb not null default '{}'::jsonb,
   booking jsonb not null default '{}'::jsonb, artifacts jsonb not null default '[]'::jsonb, provenance jsonb not null default '[]'::jsonb,
-  commitment text not null default 'planned' check (commitment in ('planned','confirmed','completed','cancelled')),
+  commitment text not null default 'planned' check (commitment in ('optional','planned','confirmed','completed','cancelled')),
   visual jsonb not null default '{}'::jsonb, movement boolean not null default false, accommodation boolean not null default false, hire boolean not null default false,
   revision integer not null default 1 check (revision > 0), created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   check (parent_event_id is null or parent_event_id <> id)
