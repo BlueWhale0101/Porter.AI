@@ -33,6 +33,7 @@ export function validateArtifact(artifact) {
   if (!artifact.storageRef || typeof artifact.storageRef !== 'object' || typeof artifact.storageRef.provider !== 'string' || !artifact.storageRef.provider) throw new TypeError('Artifact storageRef.provider is required');
   if (typeof artifact.offlineRequired !== 'boolean') throw new TypeError('Artifact offlineRequired must be boolean');
   for (const field of ['participantIds','satisfiesAdmissionIds']) if (artifact[field] != null && (!Array.isArray(artifact[field]) || artifact[field].some(x=>typeof x !== 'string' || !x))) throw new TypeError(`Artifact ${field} must be string IDs`);
+  for (const field of ['sourceUrl','appUrl']) if (artifact[field] != null && (typeof artifact[field] !== 'string' || !artifact[field].trim())) throw new TypeError(`Artifact ${field} must be a non-empty URL/reference`);
   if (artifact.code != null) validateArtifactCode(artifact.code);
 }
 export function validateArtifactCode(code) {
