@@ -27,6 +27,13 @@ export function newEvent(input, tripId) {
     movement: Boolean(input.movement), accommodation: Boolean(input.accommodation), hire: Boolean(input.hire),
     createdAt: timestamp, updatedAt: timestamp, revision: 1 };
 }
+export function validateArtifact(artifact) {
+  if (!artifact || typeof artifact !== 'object') throw new TypeError('Artifact metadata is required');
+  for (const field of ['id','role','mediaType','version']) if (typeof artifact[field] !== 'string' || !artifact[field].trim()) throw new TypeError(`Artifact ${field} is required`);
+  if (!artifact.storageRef || typeof artifact.storageRef !== 'object' || typeof artifact.storageRef.provider !== 'string' || !artifact.storageRef.provider) throw new TypeError('Artifact storageRef.provider is required');
+  if (typeof artifact.offlineRequired !== 'boolean') throw new TypeError('Artifact offlineRequired must be boolean');
+  for (const field of ['participantIds','satisfiesAdmissionIds']) if (artifact[field] != null && (!Array.isArray(artifact[field]) || artifact[field].some(x=>typeof x !== 'string' || !x))) throw new TypeError(`Artifact ${field} must be string IDs`);
+}
 
 export function newKnowledge(input, tripId) {
   validateKnowledge(input);
@@ -61,6 +68,7 @@ function validateEvent(event) {
     if (spatial.location) throw new TypeError('Movement Event cannot have ordinary location');
   } else if (spatial.origin || spatial.destination) throw new TypeError('Non-movement Event cannot have origin/destination');
   validateTemporal(event.temporal ?? {});
+  for (const artifact of event.artifacts ?? []) validateArtifact(artifact);
 }
 function validateTemporal(temporal) {
   for (const field of ['start','end']) if (temporal[field] != null && (typeof temporal[field] !== 'string' || Number.isNaN(Date.parse(temporal[field])))) throw new TypeError(`Invalid Event temporal ${field}`);

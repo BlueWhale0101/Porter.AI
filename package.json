@@ -3,5 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node test/porter.test.js" }
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "mcp": "node mcp/server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@supabase/supabase-js": "^2.117.2",
+    "zod": "^3.25.76"
+  }
 }
