@@ -5,6 +5,7 @@
 export class InteractionController {
   #owner = null;
   begin(kind) { const owner = { kind }; this.#owner = owner; return owner; }
+  owns(owner) { return this.#owner === owner; }
   get active() { return this.#owner !== null; }
   get kind() { return this.#owner?.kind ?? null; }
   release(owner) { if (this.#owner !== owner) return false; this.#owner = null; return true; }

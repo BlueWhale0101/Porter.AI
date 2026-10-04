@@ -1,3 +1,4 @@
+import { parkingCaptureId, matchesParking } from './parking.js';
 import { newTrip, newEvent, newKnowledge, revise, validateArtifact } from './domain.js';
 import { buildTripPacket } from './projection.js';
 import { exportTrip, exportEvent, exportKnowledge } from './export.js';
@@ -15,7 +16,16 @@ export class PersistentPorterService {
   async getEvent(id) { const item=await this.repository.getEvent(id); await this.getTrip(item.tripId); return item; }
   async updateEvent(id,patch,expectedRevision) { const current=await this.getEvent(id); await this.#assertParent(current.tripId,patch.parentEventId,current.id); const event=revise(current,patch,expectedRevision); this.#assertArtifactReferences(event); return this.repository.updateEvent(event,expectedRevision); }
   async createKnowledge(tripId,input) { await this.getTrip(tripId); return this.repository.insertKnowledge(newKnowledge(input,tripId)); }
-  async setCurrentParking(tripId,input) { await this.getTrip(tripId); const existing=await this.repository.listKnowledge(tripId); for(const item of existing.filter(x=>x.tags.includes('parking')&&x.tags.includes('current'))) await this.updateKnowledge(item.id,{tags:item.tags.filter(tag=>tag!=='current')},item.revision); return this.createKnowledge(tripId,{...input,tags:[...new Set([...(input.tags??[]),'parking','current'])]}); }
+  async setCurrentParking(tripId,input) { await this.getTrip(tripId); const existing=await this.repository.listKnowledge(tripId); const captureId=parkingCaptureId(input); const replay=captureId&&existing.find(x=>parkingCaptureId(x)===captureId); if(replay)return replay; for(const item of existing.filter(x=>x.tags.includes('parking')&&x.tags.includes('current'))) await this.updateKnowledge(item.id,{tags:item.tags.filter(tag=>tag!=='current')},item.revision); return this.createKnowledge(tripId,{...input,tags:[...new Set([...(input.tags??[]),'parking','current'])]}); }
+  async clearCurrentParking(tripId,target) {
+    await this.getTrip(tripId);
+    if(!target?.knowledgeId&&!target?.captureId)throw new TypeError('A parking Knowledge or capture ID is required');
+    const items=await this.repository.listKnowledge(tripId);
+    for(const item of items.filter(x=>x.tags.includes('parking')&&matchesParking(x,target))){
+      if(item.tags.includes('current'))await this.updateKnowledge(item.id,{tags:item.tags.filter(tag=>tag!=='current')},item.revision);
+    }
+    return {cleared:true};
+  }
   async listKnowledge(tripId) { await this.getTrip(tripId); return this.repository.listKnowledge(tripId); }
   async getKnowledge(id) { const item=await this.repository.getKnowledge(id); await this.getTrip(item.tripId); return item; }
   async updateKnowledge(id,patch,expectedRevision) { const current=await this.getKnowledge(id); return this.repository.updateKnowledge(revise(current,patch,expectedRevision),expectedRevision); }
