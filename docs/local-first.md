@@ -22,4 +22,12 @@ Planning is a client projection of the same TripPacket used by Active Journey. I
 
 Planning presentation applies a narrow pure overlay to `TripPacket + queued mutations`: queued Event creates receive a temporary client-only `pending:` display ID; queued Event edits are merged for presentation and visibly pending. Neither changes the stored authoritative packet. Replayed mutations cause the authoritative packet to replace this overlay; revision conflicts remain queued and marked for later resolution. Editing and creation use the semantic client mutation dispatcher, never a direct Supabase write. The existing interaction owner defers packet adoption while details, an edit form, or Door Mode is open.
 
+## Trip Library and perspective
+
+The device keeps a small `tripIndex` cache alongside packets: title, lifecycle, participant summary, usable-packet flag, and last local sync. It is not Trip source truth. Existing PR3–PR5 packets remain readable through a legacy packet-key fallback and populate the index on the next local render.
+
+Packet identity is `tripId + perspectiveParticipantId-or-everyone`. A cached Whole Trip packet can never be used as a participant perspective packet; when offline, an uncached perspective is explicitly unavailable until it can be synchronized. Artifact cache identity remains `tripId + eventId + artifactId`. The local active selection includes both Trip and perspective. Trip switching clears deferred state and restores only that selection’s packet; queued mutations remain one queue but carry and are displayed by their own `tripId`.
+
+Participants are lightweight Trip-owned `{ id, name }` structure. The client generates stable IDs for new entries and keeps IDs unchanged when names are edited. Removing an Event-referenced participant is rejected rather than silently changing Event participation. Archived Trips remain indexed and retain their packets/artifacts; archive is not deletion.
+
 Quick Actions queue semantic Knowledge mutations locally. A parking action uses the explicit `setCurrentParking` semantic operation, which removes `current` from existing parking Knowledge before creating the new `parking` + `current` Knowledge item. Replayed mutations retain revision conflicts for later resolution. Active dialogs—including Door Mode—defer packet adoption until closed.
