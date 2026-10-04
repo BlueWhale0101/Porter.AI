@@ -5,6 +5,7 @@ import { Writable } from 'node:stream';
 import { mkdir, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { productionConfig } from '../server/config.mjs';
 import { createAuthenticatedPorterRuntime } from '../src/runtime.js';
 import { acceptanceData, seedAcceptance, seedDay } from './acceptance-data.mjs';
@@ -46,6 +47,12 @@ if(process.argv.includes('--plan')){
     if(!response.ok)throw new Error(`Seed saved, but client packet verification failed: HTTP ${response.status}. Rerun safely.`);
     const packet=await response.json();
     if(packet.trip.id!==result.tripId||Object.keys(packet.events).length<result.events)throw new Error('Seed saved, but client packet is incomplete');
-    console.log(JSON.stringify({...result,url:`${config.origin}/#${result.tripId}`,semanticSeed:true,clientHttpVerified:true,browserOfflineReadinessVerified:false},null,2));
+    for(const artifact of packet.artifactManifest.filter(a=>a.offlineRequired)){
+      const download=await fetch(`http://127.0.0.1:${config.port}/client/artifacts/${artifact.eventId}/${artifact.id}`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});
+      if(!download.ok)throw new Error(`Seed saved, but artifact HTTP verification failed: ${download.status}. Rerun safely.`);
+      const digest=createHash('sha256').update(Buffer.from(await download.arrayBuffer())).digest('hex');
+      if(digest!==artifact.checksum)throw new Error('Seed saved, but client artifact checksum differs');
+    }
+    console.log(JSON.stringify({...result,url:`${config.origin}/#${result.tripId}`,semanticSeed:true,clientHttpVerified:true,artifactHttpVerified:true,browserOfflineReadinessVerified:false},null,2));
   }finally{await rmdir(lock);}
 }
