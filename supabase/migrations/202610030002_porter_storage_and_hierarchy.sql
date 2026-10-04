@@ -1,9 +1,9 @@
 -- Porter-owned Storage bucket. Original artifacts remain private and inherit authenticated ownership.
 insert into storage.buckets (id, name, public) values ('porter-artifacts', 'porter-artifacts', false) on conflict (id) do nothing;
-create policy porter_artifacts_select on storage.objects for select to authenticated using (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()));
-create policy porter_artifacts_insert on storage.objects for insert to authenticated with check (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()));
-create policy porter_artifacts_update on storage.objects for update to authenticated using (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid())) with check (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()));
-create policy porter_artifacts_delete on storage.objects for delete to authenticated using (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()));
+create policy porter_artifacts_select on storage.objects for select to authenticated using (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()::text));
+create policy porter_artifacts_insert on storage.objects for insert to authenticated with check (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()::text));
+create policy porter_artifacts_update on storage.objects for update to authenticated using (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()::text)) with check (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()::text));
+create policy porter_artifacts_delete on storage.objects for delete to authenticated using (bucket_id = 'porter-artifacts' and owner_id = (select auth.uid()::text));
 
 -- Database defence in depth for parent cycles; the semantic service also returns a useful hierarchy error.
 create or replace function public.travel_events_reject_parent_cycle() returns trigger language plpgsql as $$

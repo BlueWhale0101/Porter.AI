@@ -1,0 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { productionConfig } from './config.mjs';
+import { createProductionApp } from './app.mjs';
+const config=productionConfig(),dist=resolve('dist');
+const build=JSON.parse(readFileSync(resolve(dist,'build.json'),'utf8'));
+if(!/^[0-9a-f]{40}$/.test(build.revision))throw new Error('Build must identify an exact Git revision');
+readFileSync(resolve(dist,'index.html'));readFileSync(resolve(dist,'sw.js'));
+const server=createProductionApp({config,dist,build}).listen(config.port,'127.0.0.1',()=>console.log(JSON.stringify({service:'Porter.AI',status:'listening',port:config.port,...build})));
+for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{server.close(()=>process.exit(0));setTimeout(()=>process.exit(1),10000).unref();});

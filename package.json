@@ -7,16 +7,22 @@
     "test": "node --test test/*.test.js",
     "mcp": "node mcp/server.mjs",
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "start": "node server/start.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
     "@supabase/supabase-js": "^2.117.2",
+    "express": "5.2.1",
     "jsbarcode": "^3.12.3",
     "qrcode": "^1.5.4",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "vite": "^6.4.3"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

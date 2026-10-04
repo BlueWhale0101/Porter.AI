@@ -1,12 +1,14 @@
 # Porter runtime configuration
 
-The MCP server is deliberately an authenticated server-side service. Do not expose its token or Supabase secret keys to a phone client.
+See [deployment and rollback runbook](deployment.md) for the authoritative production
+configuration, authentication, process management, migration and smoke procedures.
+See [deployment status](deployment-status.md) for checks actually performed.
 
-| Variable | Purpose |
-| --- | --- |
-| `PORTER_SUPABASE_URL` | Supabase project URL |
-| `PORTER_SUPABASE_KEY` | Supabase publishable key used with RLS |
-| `PORTER_ARTIFACT_BUCKET` | optional, defaults to `porter-artifacts` |
-| `PORTER_MCP_HOST` / `PORTER_MCP_PORT` | optional listener values; default `127.0.0.1:8788` |
+Porter uses a Supabase publishable/anon key with a verified user JWT and RLS;
+no service-role key is needed. Browser sessions use same-origin HttpOnly cookies.
+The shell and IndexedDB are readable before any authentication/network work.
 
-Run `npm run mcp`; `GET /health` is a non-sensitive health check and `POST /mcp` is the Streamable HTTP MCP endpoint. Every `POST /mcp` request must present `Authorization: Bearer <Supabase user JWT>`. The runtime resolves that caller with `auth.getUser(accessToken)`; MCP tools never accept an owner ID as authority. The backend uses RLS with that per-request JWT rather than a service role key.
+`npm start` serves the production build and client API on `127.0.0.1:8790`.
+`npm run mcp` optionally serves the private MCP endpoint on `127.0.0.1:8791`,
+using the same validated runtime configuration and authenticated owner.
+A Secure MCP Tunnel key does not replace the required Supabase user JWT.
