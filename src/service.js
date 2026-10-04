@@ -7,7 +7,7 @@ export class PorterService {
   createTrip(ownerId, input) { const trip = newTrip(input, ownerId); this.trips.set(trip.id, trip); return trip; }
   listTrips(ownerId) { return [...this.trips.values()].filter(t => t.ownerId === ownerId); }
   getTrip(ownerId, id) { return this.#owned(ownerId, this.trips, id); }
-  updateTrip(ownerId,id,patch,revision) { return this.#update(ownerId,this.trips,id,patch,revision); }
+  updateTrip(ownerId,id,patch,revision) { const current=this.getTrip(ownerId,id),next=revise(current,patch,revision); this.#assertParticipantRemovals(current,next,[...this.events.values()].filter(event=>event.tripId===id)); this.trips.set(id,next); return next; }
   createEvent(ownerId,tripId,input) { this.getTrip(ownerId,tripId); if (input.parentEventId && this.getEvent(ownerId,input.parentEventId).tripId !== tripId) throw new Error('Parent Event must belong to the same Trip'); const event = newEvent(input,tripId); this.events.set(event.id,event); return event; }
   listEvents(ownerId,tripId) { this.getTrip(ownerId,tripId); return [...this.events.values()].filter(e => e.tripId === tripId); }
   getEvent(ownerId,id) { const e=this.events.get(id); this.getTrip(ownerId,e?.tripId); return e; }
@@ -27,4 +27,6 @@ export class PorterService {
   #source(ownerId,id) { const trip=this.getTrip(ownerId,id); return {trip,events:[...this.events.values()].filter(e=>e.tripId===id),knowledge:[...this.knowledge.values()].filter(k=>k.tripId===id)}; }
   #owned(ownerId,map,id) { const item=map.get(id); if(!item || item.ownerId !== ownerId) throw new Error('Travel object not found'); return item; }
   #update(ownerId,map,id,patch,revision) { const current=this.#owned(ownerId,map,id); const next=revise(current,patch,revision); map.set(id,next); return next; }
+  #assertParticipantRemovals(current,next,events) { const remaining=new Set((next.participants??[]).map(participantId)); for(const participant of current.participants??[]) { const id=participantId(participant); if(!remaining.has(id)&&events.some(event=>(event.participants??[]).includes(id))) throw new Error(`Participant ${id} is referenced by Events and cannot be removed`); } }
 }
+const participantId=participant=>typeof participant==='string'?participant:participant?.id;
