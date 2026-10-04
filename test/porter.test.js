@@ -61,6 +61,9 @@ test('updates reject identity and ownership changes and revalidate the whole obj
 test('optimistic revisions reject conflicts', () => {
   const {service,trip}=setup(); const changed=service.updateTrip(owner,trip.id,{title:'Changed'},1); assert.equal(changed.revision,2); assert.throws(()=>service.updateTrip(owner,trip.id,{title:'Lost'},1),ConflictError);
 });
+test('Trip participant removal is rejected by the semantic service when Events still reference it', () => {
+  const {service,trip}=setup(); event(service,trip,{title:'Wes flight',participants:['wes']}); assert.throws(()=>service.updateTrip(owner,trip.id,{participants:[{id:'skye',name:'Skye'},{id:'tor',name:'Tor'}]},trip.revision),/referenced by Events/);
+});
 test('copy preserves source semantics while creating independent identities', () => {
   const {service,trip}=setup(); const original=event(service,trip,{title:'Train'}); const copied=service.copyEvent(owner,original.id); const copiedTrip=service.copyTrip(owner,trip.id);
   assert.notEqual(copied.id,original.id); assert.equal(copied.title,'Train (copy)'); assert.notEqual(copiedTrip.id,trip.id);

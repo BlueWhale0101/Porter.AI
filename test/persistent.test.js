@@ -25,6 +25,9 @@ test('row translators round-trip all three Porter domain objects without snake_c
 test('persistent service enforces ownership and atomic revision conflicts', async()=>{
   const {service,trip}=await setup(); const other=new PersistentPorterService(service.repository,'owner-b'); await assert.rejects(other.getTrip(trip.id),NotFoundError); const changed=await service.updateTrip(trip.id,{title:'Changed'},1); assert.equal(changed.revision,2); await assert.rejects(service.updateTrip(trip.id,{title:'Lost'},1),ConflictError);
 });
+test('persistent service rejects removal of a participant still referenced by an Event', async()=>{
+  const {service,trip}=await setup(); const populated=await service.updateTrip(trip.id,{participants:[{id:'wes',name:'Wes'}]},trip.revision); await service.createEvent(trip.id,{title:'Flight',participants:['wes']}); await assert.rejects(service.updateTrip(trip.id,{participants:[]},populated.revision),/referenced by Events/);
+});
 test('Supabase adapter applies expected revision in its atomic update predicate', async()=>{
   const calls=[]; const query={update:value=>{calls.push(['update',value]);return query;},eq:(field,value)=>{calls.push(['eq',field,value]);return query;},select:()=>query,maybeSingle:async()=>({data:null,error:null})}; const repository=new SupabasePorterRepository({from:table=>{assert.equal(table,'travel_trips');return query;}}); const {trip}=await setup();
   await assert.rejects(repository.updateTrip('owner-a',{...trip,title:'new',revision:2},1),ConflictError); assert.deepEqual(calls.find(x=>x[1]==='revision'),['eq','revision',1]);
