@@ -69,3 +69,12 @@ test('fixture entry is explicitly development gated and cannot call production m
   const main=readFileSync(new URL('../client/main.js',import.meta.url),'utf8');assert.match(main,/import\.meta\.env\.DEV &&/);assert.match(main,/fixtureMode\?await/);
   const fixture=await createFixtures();await assert.rejects(fixture.api.mutate({}),/no production API/);
 });
+
+test('installed icons use shell cache even when optional artwork cache is empty',async()=>{
+  const source=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8').replace("/*__SHELL_FILES__*/['/','/index.html']",JSON.stringify(['/','/index.html','/artwork/brand/porter-app-icon-192.png'])).replaceAll('__BUILD_ID__','icon-build');
+  const handlers={},opened=[];
+  vm.runInNewContext(source,{self:{location:{origin:'https://porter.test'},addEventListener:(name,fn)=>handlers[name]=fn},caches:{open:async name=>{opened.push(name);return {match:async()=>new Response('cached icon')};}},URL,Response,fetch:async()=>{throw new Error('offline');}});
+  let response;handlers.fetch({request:{method:'GET',url:'https://porter.test/artwork/brand/porter-app-icon-192.png',headers:{has:()=>false}},respondWith:p=>response=p});
+  assert.equal(await (await response).text(),'cached icon');assert.deepEqual(opened,['porter-shell-icon-build']);
+  let intercepted=false;handlers.fetch({request:{method:'GET',url:'https://porter.test/auth/session',headers:{has:()=>false}},respondWith:()=>{intercepted=true;}});assert.equal(intercepted,false);
+});

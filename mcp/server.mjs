@@ -1,3 +1,4 @@
+import { productionConfig } from '../server/config.mjs';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -33,9 +34,10 @@ export function errorCode(error) { if(error instanceof AuthenticationError) retu
 export function bearerToken(header) { const match=/^Bearer\s+(.+)$/i.exec(header??''); if(!match) throw new AuthenticationError('Bearer token is required'); return match[1]; }
 
 if(import.meta.url===`file://${process.argv[1]}`) {
-  const port=Number(process.env.PORTER_MCP_PORT ?? 8788); const host=process.env.PORTER_MCP_HOST ?? '127.0.0.1';
+  const config=productionConfig();
+  const port=Number(process.env.PORTER_MCP_PORT ?? 8791); const host=process.env.PORTER_MCP_HOST ?? '127.0.0.1';
   const app=createMcpExpressApp();
   app.get('/health',(_req,res)=>res.json({ok:true,service:'Porter.AI'}));
-  app.post('/mcp',async(req,res)=>{ let transport; let server; try { const {service}=await createAuthenticatedPorterRuntime(bearerToken(req.headers.authorization)); server=createPorterMcpServer(service); transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined}); await server.connect(transport); await transport.handleRequest(req,res,req.body); } catch(error) { if(!res.headersSent) res.status(error instanceof AuthenticationError?401:500).json({jsonrpc:'2.0',error:{code:-32603,message:error instanceof AuthenticationError?'Authentication failed':'Porter MCP server error'},id:null}); } finally { if(transport&&server) res.on('close',()=>{ transport.close(); server.close(); }); } });
+  app.post('/mcp',async(req,res)=>{ let transport; let server; try { const {service}=await createAuthenticatedPorterRuntime(bearerToken(req.headers.authorization),config.runtime); if(service.ownerId!==config.ownerId)throw new AuthenticationError('Account not authorized'); server=createPorterMcpServer(service); transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined}); await server.connect(transport); await transport.handleRequest(req,res,req.body); } catch(error) { if(!res.headersSent) res.status(error instanceof AuthenticationError?401:500).json({jsonrpc:'2.0',error:{code:-32603,message:error instanceof AuthenticationError?'Authentication failed':'Porter MCP server error'},id:null}); } finally { if(transport&&server) res.on('close',()=>{ transport.close(); server.close(); }); } });
   app.listen(port,host,()=>console.log(`Porter MCP listening on http://${host}:${port}/mcp`));
 }

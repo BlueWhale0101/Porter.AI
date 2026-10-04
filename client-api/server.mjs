@@ -23,13 +23,19 @@ export async function handleClientMutation(request,runtimeForRequest=token=>crea
   return dispatchClientMutation(runtime.service,request.body);
 }
 
-export function createClientApi(runtimeForRequest=token=>createAuthenticatedPorterRuntime(token)){
-  const app=createMcpExpressApp();
+function publicError(error,response){
+  const authentication=error instanceof AuthenticationError,conflict=error instanceof ConflictError,invalid=error instanceof TypeError;
+  response.status(authentication?401:conflict?409:invalid?400:503).json({code:authentication?'authentication_failed':conflict?'revision_conflict':invalid?'invalid_semantic_input':'backend_error',message:authentication?'Sign in to synchronize':conflict?'Revision conflict':invalid?error.message:'Porter service is temporarily unavailable'});
+}
+
+export function createClientApi(runtimeForRequest=token=>createAuthenticatedPorterRuntime(token),options={}){
+  const app=createMcpExpressApp(options);
+  app.use((_request,response,next)=>{response.set('Cache-Control','no-store');next();});
   const runtime=async request=>runtimeForRequest(bearerToken(request.headers.authorization));
-  app.get('/client/trips',async(request,response)=>{try{response.json(await (await runtime(request)).service.listTrips());}catch(error){response.status(error instanceof AuthenticationError?401:400).json({code:error instanceof AuthenticationError?'authentication_failed':'backend_error'});}});
-  app.get('/client/trips/:id/packet',async(request,response)=>{try{response.json(await (await runtime(request)).service.tripContext(request.params.id,{perspectiveParticipantId:request.query.perspective,now:request.query.now}));}catch(error){response.status(error instanceof AuthenticationError?401:400).json({code:error instanceof AuthenticationError?'authentication_failed':'backend_error'});}});
-  app.get('/client/artifacts/:eventId/:artifactId',async(request,response)=>{try{const caller=await runtime(request);const event=await caller.service.getEvent(request.params.eventId);const artifact=event.artifacts.find(item=>item.id===request.params.artifactId);if(!artifact)return response.status(404).json({code:'not_found'});const blob=await caller.storage.get(artifact.storageRef);response.set('X-Porter-Artifact-Version',artifact.version??'');response.set('X-Porter-Artifact-Checksum',artifact.checksum??'');response.type(artifact.mediaType).send(Buffer.from(await blob.arrayBuffer()));}catch(error){response.status(error instanceof AuthenticationError?401:400).json({code:error instanceof AuthenticationError?'authentication_failed':'backend_error'});}});
-  app.post('/client/mutate',async(request,response)=>{try{const result=await handleClientMutation({authorization:request.headers.authorization,body:request.body},runtimeForRequest);response.json(result);}catch(error){const code=error instanceof ConflictError?'revision_conflict':error.code??'invalid_semantic_input';response.status(code==='revision_conflict'?409:error instanceof AuthenticationError?401:400).json({code,message:error.message});}});
+  app.get('/client/trips',async(request,response)=>{try{response.json(await (await runtime(request)).service.listTrips());}catch(error){publicError(error,response);}});
+  app.get('/client/trips/:id/packet',async(request,response)=>{try{response.json(await (await runtime(request)).service.tripContext(request.params.id,{perspectiveParticipantId:request.query.perspective,now:request.query.now}));}catch(error){publicError(error,response);}});
+  app.get('/client/artifacts/:eventId/:artifactId',async(request,response)=>{try{const caller=await runtime(request);const event=await caller.service.getEvent(request.params.eventId);const artifact=event.artifacts.find(item=>item.id===request.params.artifactId);if(!artifact)return response.status(404).json({code:'not_found'});const blob=await caller.storage.get(artifact.storageRef);response.set('X-Porter-Artifact-Version',artifact.version??'');response.set('X-Porter-Artifact-Checksum',artifact.checksum??'');response.type(artifact.mediaType).send(Buffer.from(await blob.arrayBuffer()));}catch(error){publicError(error,response);}});
+  app.post('/client/mutate',async(request,response)=>{try{const result=await handleClientMutation({authorization:request.headers.authorization,body:request.body},runtimeForRequest);response.json(result);}catch(error){publicError(error,response);}});
   return app;
 }
 

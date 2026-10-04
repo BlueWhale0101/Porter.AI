@@ -1,0 +1,7 @@
+# Import this as a separate site in the existing reverse proxy configuration.
+# Replace this reserved placeholder with the actual DNS name; do not replace
+# another application's Caddyfile or take over its listener.
+porter.example.invalid {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8790
+}
