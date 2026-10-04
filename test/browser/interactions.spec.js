@@ -76,6 +76,8 @@ test('Details → Door retains ownership through a deferred packet',async({page,
   await page.locator(`[data-event="${eventId}"]`).first().tap();await page.locator('#details #passes').tap();
   await request.post('/__test/release');await expect(page.locator('#status')).toHaveText('Update ready when you finish');
   await expect(page.locator('#door')).toBeVisible();await expect(page.locator('#door canvas')).toBeVisible();
-  await page.locator('#door #close').tap();await expect(page.locator('#app h1')).toHaveText('Updated regression Trip');
+  await page.locator('#door #close').tap();
+  // The closed dialog retains its own h1 until async packet adoption replaces it.
+  await expect(page.locator('.trip-overview h1')).toHaveText('Updated regression Trip');
   await navigateSurfaces(page);
 });
