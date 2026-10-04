@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "test:browser": "npm run build && playwright test",
     "mcp": "node mcp/server.mjs",
     "build": "vite build",
     "dev": "vite",
@@ -20,6 +21,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "vite": "^6.4.3"
   },
   "engines": {
