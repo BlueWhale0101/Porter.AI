@@ -1,11 +1,13 @@
 import { test,expect } from '@playwright/test';
 
 let tripId,eventId;
-test.beforeEach(async({page,request})=>{
+test.beforeEach(async({page,context,request})=>{
   ({tripId,eventId}=await (await request.post('/__test/reset')).json());
   // Only the auth credential is supplied by the test. HTTP responses, projection,
   // IndexedDB transactions, rendered production bundle and worker are real.
-  await page.route('**/client/**',route=>route.continue({headers:{...route.request().headers(),Authorization:'Bearer browser-regression'}}));
+  // Cookies survive worker-controlled reloads, where WebKit request routing does
+  // not reliably intercept page requests. Only the test server recognizes this cookie.
+  await context.addCookies([{name:'browser-regression-access',value:'browser-regression',url:'http://localhost:4178',httpOnly:true,sameSite:'Strict'}]);
   await page.goto(`/?porter-diagnostics=1#${tripId}`);
   await expect(page.locator('#status')).toHaveText('Sync complete');
   await expect(page.locator('#app h1')).toHaveText('Browser regression Trip');

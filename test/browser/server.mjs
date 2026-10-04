@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createProductionApp } from '../../server/app.mjs';
+import { cookies } from '../../server/auth.mjs';
 import { PersistentPorterService } from '../../src/persistent-service.js';
 import { AuthenticationError } from '../../src/runtime.js';
 import { NotFoundError } from '../../src/repository.js';
@@ -50,6 +51,14 @@ host.post('/__test/hold',async(_req,res)=>{
 host.get('/__test/state',(_req,res)=>res.json({held,waiting}));
 host.post('/__test/release',(_req,res)=>{held=false;release?.();res.json({ok:true});});
 const config={hostname:'localhost',origin:'http://localhost:4178',ownerId:owner};
+// Test-only credential adapter: localhost HTTP cannot use the production Secure
+// __Host- cookie in every engine. Keep real requests (including worker-controlled
+// reloads) on the production client API rather than intercepting browser traffic.
+host.use('/client',(req,_res,next)=>{
+  const token=cookies(req)['browser-regression-access'];
+  if(token)req.headers.authorization=`Bearer ${token}`;
+  next();
+});
 host.use(createProductionApp({config,dist:resolve('dist'),build:JSON.parse(readFileSync('dist/build.json','utf8')),
   logger:()=>{},runtimeForToken:async token=>{
     if(token!=='browser-regression')throw new AuthenticationError('Test authentication required');
