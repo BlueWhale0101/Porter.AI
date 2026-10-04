@@ -94,17 +94,23 @@ test('V0 Quick Actions omits Add note; an unscheduled Calendar explains its empt
   await page.locator('#add-event').tap();await expect(page.locator('#quick-dialog #event-form')).toBeVisible();
 });
 
-test('parking create → offline cold documents → clear → reconnect persists in IndexedDB and source truth',async({page,context,request})=>{
+test('parking create → offline document restart → clear → reconnect persists in IndexedDB and source truth',async({page,context,request,browserName})=>{
   await context.grantPermissions(['geolocation']);await context.setGeolocation({latitude:51.505,longitude:-0.116});
   await page.reload();await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
   await expect(page.locator('#status')).toHaveText('Sync complete');
   await context.setOffline(true);
   await page.locator('#quick').tap();await page.locator('#parking').tap();
   await expect(page.locator('[data-clear-parking]')).toBeVisible();await expect(page.locator('#quick-dialog')).not.toBeVisible();
-  const url=page.url();await page.close();let restored=await context.newPage();await restored.goto(url);
+  // WebKit's automation backend errors when opening a brand-new tab while
+  // offline. Reload still destroys JS state and reopens the real IndexedDB.
+  const restart=async previous=>{
+    if(browserName==='webkit'){await previous.reload();return previous;}
+    const url=previous.url();await previous.close();const next=await context.newPage();await next.goto(url);return next;
+  };
+  let restored=await restart(page);
   await expect(restored.locator('[data-clear-parking]')).toBeVisible();
   await restored.locator('[data-clear-parking]').tap();await expect(restored.locator('[data-clear-parking]')).toHaveCount(0);
-  await restored.close();restored=await context.newPage();await restored.goto(url);
+  restored=await restart(restored);
   await expect(restored.locator('#app h1')).toHaveText('Browser regression Trip');
   await expect(restored.locator('[data-clear-parking]')).toHaveCount(0);
   expect((await diagnostics(restored)).pendingMutations).toBe(2);

@@ -39,6 +39,19 @@ test('seed plan is deterministic and invalid dates are rejected',()=>{
   assert.deepEqual(acceptanceData('2026-10-05'),acceptanceData('2026-10-05'));
   assert.throws(()=>acceptanceData('2026-02-31'));
 });
+test('seed safely resumes an orphaned upload and never adopts an unmarked Trip',async()=>{
+  const {service,storage}=setup(),upload=service.storeArtifact.bind(service);let interrupted=true;
+  service.storeArtifact=async(eventId,input,revision)=>{
+    if(interrupted){interrupted=false;const event=await service.getEvent(eventId);await storage.put({tripId:event.tripId,eventId,artifactId:input.id,data:input.data});throw new Error('Connection lost after upload');}
+    return upload(eventId,input,revision);
+  };
+  await assert.rejects(seedAcceptance(service,storage,{today:'2026-10-05'}),/Connection lost/);
+  const result=await seedAcceptance(service,storage,{today:'2026-10-05'});
+  assert.equal((await service.listTrips()).length,1);assert.equal((await service.tripContext(result.tripId)).artifactManifest.length,6);
+  const other=setup();await other.service.createTrip({title:'Porter V0 Acceptance Journey'});
+  await assert.rejects(seedAcceptance(other.service,other.storage,{today:'2026-10-05'}),/refusing/);
+  assert.equal((await other.service.listTrips()).length,1);
+});
 test('parking create → offline restart → clear → restart → sync is ordered and idempotent',async()=>{
   const {service}=setup(),trip=await service.createTrip({title:'Parking'}),packet=await service.tripContext(trip.id);
   const knowledge={title:'Current parking',content:'Bay C12',tags:['parking','current'],sources:[{type:'porter-parking-capture',id:'capture-a'}]};
