@@ -110,3 +110,15 @@ from this development workspace.
 Open the printed Trip URL, let artifact sync finish, then test on the iPhone.
 Cache each perspective online before testing that perspective offline. The seed
 verifies storage bytes and semantic projection, not browser offline readiness.
+
+## Automated evidence boundary
+
+Browser tests serve the production build, not the development fixture harness.
+Waiting-worker/owned-interaction cases run in both Chromium and WebKit. Parking
+uses fully offline fresh documents in Chromium; the available Linux WebKit runner
+reported internal navigation errors for both offline reload and new-tab navigation,
+so its parking case uses fresh documents with the client API unavailable instead.
+That is not a claim that WebKit offline shell navigation passed. Both exercise
+real IndexedDB, the semantic HTTP boundary after reconnect, and cleared state in
+source truth. The normal Sync control completes replay after reconnect. Unit tests
+also cover mutation ordering, dependency failure, idempotence and superseded clears.

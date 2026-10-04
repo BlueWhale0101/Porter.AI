@@ -94,17 +94,21 @@ test('V0 Quick Actions omits Add note; an unscheduled Calendar explains its empt
   await page.locator('#add-event').tap();await expect(page.locator('#quick-dialog #event-form')).toBeVisible();
 });
 
-test('parking create → offline document restart → clear → reconnect persists in IndexedDB and source truth',async({page,context,request,browserName})=>{
+test('parking lifecycle across restarts (Chromium offline; WebKit API unavailable)',async({page,context,request,browserName})=>{
   await context.grantPermissions(['geolocation']);await context.setGeolocation({latitude:51.505,longitude:-0.116});
   await page.reload();await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
   await expect(page.locator('#status')).toHaveText('Sync complete');
-  await context.setOffline(true);
+  const connectivity=async available=>{
+    if(browserName==='webkit')await request.post('/__test/connectivity',{data:{apiAvailable:available}});
+    else await context.setOffline(!available);
+  };
+  await connectivity(false);
   await page.locator('#quick').tap();await page.locator('#parking').tap();
   await expect(page.locator('[data-clear-parking]')).toBeVisible();await expect(page.locator('#quick-dialog')).not.toBeVisible();
-  // WebKit's automation backend errors when opening a brand-new tab while
-  // offline. Reload still destroys JS state and reopens the real IndexedDB.
+  // Linux WebKit offline emulation failed both goto and reload with an internal
+  // navigation error. Exercise API-unavailable local startup there; Chromium
+  // covers fully offline shell navigation. Neither is an actual iPhone test.
   const restart=async previous=>{
-    if(browserName==='webkit'){await previous.reload();return previous;}
     const url=previous.url();await previous.close();const next=await context.newPage();await next.goto(url);return next;
   };
   let restored=await restart(page);
@@ -114,7 +118,10 @@ test('parking create → offline document restart → clear → reconnect persis
   await expect(restored.locator('#app h1')).toHaveText('Browser regression Trip');
   await expect(restored.locator('[data-clear-parking]')).toHaveCount(0);
   expect((await diagnostics(restored)).pendingMutations).toBe(2);
-  await context.setOffline(false);
+  await connectivity(true);
+  // A new Chromium automation target can report navigator.onLine=true even
+  // while network emulation rejects requests, so use the normal Sync control.
+  await restored.locator('#refresh').tap();
   await expect.poll(async()=>{const state=await (await request.get('/__test/parking')).json();return state.knowledge.filter(k=>k.tags.includes('parking')).length;}).toBe(1);
   await expect.poll(async()=>(await diagnostics(restored)).pendingMutations).toBe(0);
   expect((await (await request.get('/__test/parking')).json()).current).toEqual([]);
@@ -138,6 +145,10 @@ for(const interaction of ['quick','details','door','edit','quick-edit'])test(`wa
   await request.post('/__test/update');
   await page.evaluate(async()=>{await (await navigator.serviceWorker.getRegistration()).update();});
   await expect(page.locator('#porter-update')).toContainText('Porter update ready');
+  await page.locator('#porter-diagnostics [data-refresh]').evaluate(button=>button.click());
+  await expect(page.locator('#porter-diagnostics pre')).toContainText(oldBuild+'-test-1');
+  const waiting=JSON.parse(await page.locator('#porter-diagnostics pre').innerText());
+  expect(waiting.update.runningBuild).toBe(oldBuild);expect(waiting.update.available).toBe(true);
   // The modal makes the outside Update button inert to real taps. Programmatic
   // activation exercises the additional ownership guard, not a UI timing delay.
   await page.locator('#porter-update button').evaluate(button=>button.click());
