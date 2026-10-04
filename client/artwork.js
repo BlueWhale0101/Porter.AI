@@ -1,5 +1,6 @@
 // Presentation only. Never writes inferred roles back into Event source truth.
 const families = {
+  brand: ['brand', '', []],
   event: ['event-illustrations', 'event', ['accommodation','airport','cafe','city','destination','flight','hire','museum','outdoors','theatre','train']],
   current: ['current-state', 'state', ['accommodation','hire','parked']],
   system: ['system-states', 'system', ['no-active-trip','offline-ready','missing-artifact','sync-failed']],
@@ -10,7 +11,7 @@ const families = {
   icon: ['operational-icons','icon',['accommodation','add','details','events','hire','knowledge','location','navigate','offline','parking','participants','sync','tickets','trip']],
 };
 export const artwork = Object.freeze(Object.fromEntries(Object.entries(families).map(([key,[folder,prefix,roles]])=>
-  [key,Object.freeze(Object.fromEntries(roles.map(role=>[role,`/artwork/${folder}/porter-${prefix}-${role}.webp`])))])));
+  [key,Object.freeze(key==='brand'?{wordmark:'/artwork/brand/porter-wordmark-compass.webp',hero:'/artwork/brand/porter-journey-hero.webp'}:Object.fromEntries(roles.map(role=>[role,`/artwork/${folder}/porter-${prefix}-${role}.webp`])))])));
 
 export function safeAsset(value) {
   const url = typeof value==='string' ? value : value?.url;
@@ -54,7 +55,7 @@ export function systemMarkup(state) {
 export function installArtFallback(root) {
   root.addEventListener('error',event=>{
     const img=event.target;
-    if(img.tagName!=='IMG')return;
+    if(img.tagName!=='IMG'||img.alt)return;
     if(img.dataset.artFallback){const src=img.dataset.artFallback;delete img.dataset.artFallback;img.src=src;}
     else img.style.visibility='hidden'; // Preserve reserved layout, never rerender the UI.
   },true);

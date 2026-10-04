@@ -11,6 +11,7 @@ source = root / 'assets/artwork'
 delivery = root / 'public/artwork'
 rows = []
 roles = {
+    'brand': 'Original production identity; contain wordmark/icon, shallow wide Journey hero.',
     'event-illustrations': 'Centred subject; square or modest landscape crop; use at 96px+.',
     'current-state': 'Square scene; preserve full subject; compact 80px+ card inset.',
     'system-states': 'Square composition; contain at 160px+; explanatory text separate.',
@@ -29,8 +30,12 @@ for path in sorted(source.glob('*/*')):
         alpha = 'A' in image.getbands() and image.getextrema()[-1][0] < 255
         output = delivery / path.parent.name / (path.stem + '.webp')
         output.parent.mkdir(parents=True, exist_ok=True)
-        image.thumbnail((640, 640))
+        image.thumbnail((1280, 1280) if path.parent.name == 'brand' else (640, 640))
         image.save(output, 'WEBP', quality=82, method=6)
+        if path.stem == 'porter-app-icon':
+            for size in (180, 192, 512):
+                with Image.open(path) as icon:
+                    icon.resize((size, size), Image.Resampling.LANCZOS).save(delivery / 'brand' / f'porter-app-icon-{size}.png')
     rows.append({'file': str(path.relative_to(source)), 'family': path.parent.name,
                  'width': width, 'height': height, 'format': path.suffix[1:],
                  'transparent': alpha, 'bytes': path.stat().st_size,

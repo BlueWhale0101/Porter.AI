@@ -1,7 +1,7 @@
 const SHELL=/*__SHELL_FILES__*/['/','/index.html'];
-const SHELL_CACHE='porter-shell-__BUILD_ID__',ART_CACHE='porter-art-v1';
+const SHELL_CACHE='porter-shell-__BUILD_ID__',ART_CACHE='porter-art-__BUILD_ID__';
 self.addEventListener('install',event=>event.waitUntil(caches.open(SHELL_CACHE).then(cache=>cache.addAll(SHELL))));
-self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('porter-shell-')&&key!==SHELL_CACHE).map(key=>caches.delete(key))))));
+self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>(key.startsWith('porter-shell-')&&key!==SHELL_CACHE)||(key.startsWith('porter-art-')&&key!==ART_CACHE)).map(key=>caches.delete(key))))));
 self.addEventListener('fetch',event=>{
   const request=event.request,url=new URL(request.url);
   if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/client/')||request.headers.has('Authorization'))return;

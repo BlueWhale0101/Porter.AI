@@ -1,5 +1,38 @@
 [
   {
+    "file": "brand/porter-app-icon.png",
+    "family": "brand",
+    "width": 1254,
+    "height": 1254,
+    "format": "png",
+    "transparent": false,
+    "bytes": 2565037,
+    "deliveryBytes": 278956,
+    "use": "Original production identity; contain wordmark/icon, shallow wide Journey hero."
+  },
+  {
+    "file": "brand/porter-journey-hero.png",
+    "family": "brand",
+    "width": 2172,
+    "height": 724,
+    "format": "png",
+    "transparent": false,
+    "bytes": 3228214,
+    "deliveryBytes": 195964,
+    "use": "Original production identity; contain wordmark/icon, shallow wide Journey hero."
+  },
+  {
+    "file": "brand/porter-wordmark-compass.png",
+    "family": "brand",
+    "width": 2172,
+    "height": 724,
+    "format": "png",
+    "transparent": true,
+    "bytes": 977208,
+    "deliveryBytes": 122296,
+    "use": "Original production identity; contain wordmark/icon, shallow wide Journey hero."
+  },
+  {
     "file": "current-state/porter-state-accommodation.jpeg",
     "family": "current-state",
     "width": 1254,

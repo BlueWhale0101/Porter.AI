@@ -24,8 +24,14 @@ Choose a deterministic state from the fixture strip: `ready`, `partial`, `missin
 
 ## Offline, accessibility, and performance
 
-The service worker precaches the Vite shell only. Generic artwork is cache-on-use with a 24-entry bound and has no bearing on IndexedDB packets, ticket artifacts, or semantic API calls. A missing decorative asset therefore cannot block a local packet, Door Mode, or a normal render.
+The service worker precaches the Vite shell and the small PWA icon derivatives. Generic artwork is cache-on-use with a 24-entry bound and has no bearing on IndexedDB packets, ticket artifacts, or semantic API calls. The shell and artwork caches share a build identifier that hashes the artwork bytes as well as shell filenames; activation removes older artwork caches, including the original fixed cache. A missing decorative asset therefore cannot block a local packet, Door Mode, or a normal render.
 
 Decorative artwork is `aria-hidden` with empty image alt text. Status copy, ticket readiness, conflict state, and controls remain visible text. Door Mode keeps a clean high-contrast ticket surface with no art behind machine-readable codes.
 
-Rendering marks `visual_enhancement_start`, `critical_visuals_ready`, and `visual_enhancement_complete` after the local packet is already available; they complement existing utility timing marks rather than redefining readiness. Visual image decoding is lazy and dimensions are reserved to avoid artwork-induced layout shifts.
+Utility and Door Mode performance marks remain authoritative. There are no visual-completion marks: a painted frame does not establish that lazy images have decoded. Visual image decoding is asynchronous and dimensions are reserved to avoid artwork-induced layout shifts.
+
+## Recovered brand originals
+
+The existing production app icon, wordmark/compass set, and wide Active Journey hero were recovered from their original completed files and added intact under `assets/artwork/brand/`. Delivery derivatives come from the same audit script: the icon has 180px (Apple touch), 192px, and 512px PNG versions; the wordmark and hero have WebP versions. The real wordmark appears in the masthead, and the wide hero is used only in the Journey header when a custom Trip hero is absent. It stays shallow and does not displace ticket controls. Brand originals are never generated or recreated by this pipeline.
+
+Offline-ready and sync-failed illustrations supplement the actual saved-Trip production status. Missing-artifact art supplements Door Mode's missing-ticket copy, outside any machine-readable code. These paths do not require the fixture harness.

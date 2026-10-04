@@ -31,4 +31,4 @@ Keep new Porter assets within the established family: navy/ink blue, warm cream,
 
 The files in this directory are the unchanged production originals. `python scripts/artwork.py` audits those originals, writes the exact audit to `docs/artwork-audit.json`, and creates the browser delivery derivatives in `public/artwork/`. The delivery files are bounded to a 640px longest edge and WebP quality 82; source art is never replaced by the optimization step.
 
-The service worker precaches only the application shell. Generic art is cached on use (with a small bounded cache), so it can improve later offline renders without delaying first useful render or making artwork a requirement for utility.
+The service worker precaches the application shell and small app-icon derivatives. Generic art is cached on use with a build-versioned, 24-entry cache, so it can improve later offline renders without delaying first useful render or making artwork a requirement for utility. The `brand/` originals include the recovered app icon, wordmark/compass, and wide Journey hero; the script produces delivery variants without modifying those originals.
