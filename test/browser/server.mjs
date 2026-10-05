@@ -9,6 +9,7 @@ import { cookies } from '../../server/auth.mjs';
 import { PersistentPorterService } from '../../src/persistent-service.js';
 import { AuthenticationError } from '../../src/runtime.js';
 import { MemoryRepository } from '../helpers/repository.js';
+import { acceptanceData } from '../../scripts/acceptance-data.mjs';
 
 const owner='11111111-1111-4111-8111-111111111111';
 const original=Buffer.from('PORTER BROWSER REGRESSION — NOT A VALID ADMISSION');
@@ -36,6 +37,13 @@ host.use('/client',(_req,res,next)=>{if(apiUnavailable)return res.status(503).js
 host.get('/sw.js',(_req,res)=>{const build=JSON.parse(readFileSync('dist/build.json','utf8'));res.set('Cache-Control','no-store').type('application/javascript').send(readFileSync('dist/sw.js','utf8').replaceAll(build.buildId,generation?build.buildId+'-test-'+generation:build.buildId));});
 host.post('/__test/update',(_req,res)=>{generation++;res.json({generation});});
 host.post('/__test/empty',async(_req,res)=>{const empty=await service.createTrip({title:'Unscheduled Journey',lifecycle:'active'});await service.createEvent(empty.id,{title:'Choose a quiet cafe',commitment:'optional'});res.json({tripId:empty.id});});
+host.post('/__test/rich',async(_req,res)=>{
+  const data=acceptanceData(new Date().toISOString().slice(0,10));
+  const rich=await service.createTrip({title:'Acceptance calendar',lifecycle:'active',participants:[{id:'wes',name:'Wes'},{id:'skye',name:'Skye'},{id:'tor',name:'Tor'}]});
+  const ids={};
+  for(const item of data.events){const {key,...input}=item;delete input.parentKey;input.parentEventId=ids[item.parentKey]??null;input.visual={color:key==='family-tickets'?'sky':null};ids[key]=(await service.createEvent(rich.id,input)).id;}
+  res.json({tripId:rich.id,ids});
+});
 host.get('/__test/parking',async(_req,res)=>res.json({knowledge:await service.listKnowledge(trip.id),current:(await service.tripContext(trip.id)).current.parkingKnowledge}));
 host.post('/__test/reset',async(_req,res)=>{await reset();res.json({tripId:trip.id,eventId:event.id});});
 host.post('/__test/hold',async(_req,res)=>{

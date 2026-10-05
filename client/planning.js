@@ -1,11 +1,14 @@
 const clone = value => structuredClone(value);
+const localFormatters=new Map();
 
 const localParts = (value, timeZone) => {
   if (!value) return null;
   try {
-    const values = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    const key=timeZone??'';
+    if(!localFormatters.has(key))localFormatters.set(key,new Intl.DateTimeFormat('en-CA', {
       timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
-    }).formatToParts(new Date(value)).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+    }));
+    const values = Object.fromEntries(localFormatters.get(key).formatToParts(new Date(value)).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
     return { day: `${values.year}-${values.month}-${values.day}`, minute: Number(values.hour) * 60 + Number(values.minute) };
   } catch { return null; }
 };
@@ -89,8 +92,10 @@ export function calendarProjection(packet, { now = new Date().toISOString() } = 
   const events = Object.values(packet.events ?? {}), childIds = new Set(events.map(event => event.parentEventId).filter(Boolean));
   const leaves = events.filter(event => !childIds.has(event.id) && eventLocalDay(event) && eventLocalMinute(event) != null);
   const currentDays = new Set(leaves.map(event => localParts(now, event.temporal?.startTimezone)?.day).filter(Boolean));
+  const byDay=new Map();
+  for(const event of leaves){const day=eventLocalDay(event);if(!byDay.has(day))byDay.set(day,[]);byDay.get(day).push(event);}
   const days = allDays.map(day => {
-    const blocks = leaves.filter(event => eventLocalDay(event) === day).sort(compareEvents).map(event => ({ event, start: eventLocalMinute(event), duration: durationMinutes(event), lane: 0, lanes: 1 }));
+    const blocks = (byDay.get(day)??[]).sort(compareEvents).map(event => ({ event, start: eventLocalMinute(event), duration: durationMinutes(event), lane: 0, lanes: 1 }));
     const active=[];
     for (const block of blocks) {
       for(let i=active.length-1;i>=0;i--) if(active[i].start + active[i].duration <= block.start) active.splice(i,1);
