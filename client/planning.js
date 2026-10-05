@@ -18,11 +18,7 @@ export function localDateTimeValue(value, timeZone) {
   if (value && !timeZone) return '';
   const parts = localParts(value, timeZone);
   if (!parts) return '';
-  const date = new Date(value);
-  try {
-    const values = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone, year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23' }).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
-    return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
-  } catch { return value.slice(0,16); }
+  return `${parts.day}T${String(Math.floor(parts.minute/60)).padStart(2,'0')}:${String(parts.minute%60).padStart(2,'0')}`;
 }
 
 /** Converts a datetime-local value in the supplied Event zone to a source instant. */

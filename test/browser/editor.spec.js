@@ -8,13 +8,14 @@ test.beforeEach(async({page,context,request})=>{
 const source=async request=>(await(await request.get('/__test/events',{params:{tripId}})).json());
 const queued=page=>page.evaluate(()=>new Promise((resolve,reject)=>{const open=indexedDB.open('porter-v0',3);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,r=db.transaction('mutations').objectStore('mutations').getAll();r.onsuccess=()=>{resolve(r.result.filter(x=>['createEvent','updateEvent'].includes(x.operation)));db.close();};};}));
 async function add(page){await page.locator('#quick').tap();await page.locator('#quick-dialog #add-event').tap();await expect(page.locator('#event-form')).toBeVisible();}
-async function editorTrip(page,request){({tripId}=await(await request.post('/__test/editor')).json());await page.goto(`/?editor=1#${tripId}`);await expect(page.locator('#status')).toHaveText('Sync complete');await add(page);}
+async function editorTrip(page,request){({tripId}=await(await request.post('/__test/editor')).json());await page.goto(`/?editor=1#${tripId}`);await expect(page.locator('#status')).toHaveText('Sync complete');}
 
 test('partial draft: implicit submit, background/resume, sync and dismissal never create an Event',async({page,request})=>{
   const before=(await source(request)).length;await add(page);await page.locator('[name=title]').fill('Unsaved Test event');
-  await page.locator('[name=start]').fill('2407-05-02T00:28');
   await page.locator('[name=title]').press('Enter');
   await page.locator('#event-form').evaluate(form=>form.requestSubmit());
+  expect((await source(request)).length).toBe(before);expect(await queued(page)).toEqual([]);
+  await page.locator('[name=start]').fill('2407-05-02T00:28');
   await page.evaluate(()=>{
     Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));dispatchEvent(new Event('blur'));
     Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));document.dispatchEvent(new Event('visibilitychange'));dispatchEvent(new Event('focus'));dispatchEvent(new Event('online'));
@@ -43,6 +44,7 @@ test('explicit Save creates exactly once; invalid input and synthetic activation
 test('local timezone inference, friendly search, explicit override and ordinary/movement zones',async({page,request})=>{
   await editorTrip(page,request);await request.post('/__test/connectivity',{data:{apiAvailable:false}});
   const reads=[];page.on('request',r=>{if(r.url().includes('/client'))reads.push(r.url());});
+  await add(page);
   await page.locator('[name=title]').fill('Local travel');await page.locator('[name=start]').fill('2026-10-03T10:00');
   await expect(page.locator('[name=startTimezone]')).toHaveValue('Europe/London');await expect(page.locator('[name=startTimezone] option:checked')).toHaveText('London');await expect(page.locator('[data-end-zone]')).toBeHidden();
   await page.locator('[name=start]').fill('2026-10-08T10:00');await expect(page.locator('[name=startTimezone]')).toHaveValue('Europe/Rome');
