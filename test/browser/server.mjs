@@ -14,9 +14,9 @@ import { acceptanceData } from '../../scripts/acceptance-data.mjs';
 
 const owner='11111111-1111-4111-8111-111111111111';
 const original=Buffer.from('PORTER BROWSER REGRESSION — NOT A VALID ADMISSION');
-let service,trip,event,held=false,waiting=0,release,gate,generation=0,apiUnavailable=false;
+let service,trip,event,held=false,waiting=0,release,gate,generation=0,apiUnavailable=false,iconsUnavailable=false;
 async function reset(){
-  release?.();generation=0;apiUnavailable=false;held=false;waiting=0;gate=Promise.resolve();
+  release?.();generation=0;apiUnavailable=false;iconsUnavailable=false;held=false;waiting=0;gate=Promise.resolve();
   service=new PersistentPorterService(new MemoryRepository(),owner);
   trip=await service.createTrip({title:'Browser regression Trip',lifecycle:'active'});
   event=await service.createEvent(trip.id,{
@@ -33,7 +33,8 @@ async function reset(){
 }
 await reset();
 const host=express();host.use(express.json());
-host.post('/__test/connectivity',(req,res)=>{apiUnavailable=!req.body.apiAvailable;res.json({apiUnavailable});});
+host.post('/__test/connectivity',(req,res)=>{apiUnavailable=!req.body.apiAvailable;if(req.body.iconsAvailable!==undefined)iconsUnavailable=!req.body.iconsAvailable;res.json({apiUnavailable,iconsUnavailable});});
+host.use('/artwork/event-icons',(_req,res,next)=>{if(iconsUnavailable)return res.status(503).end();next();});
 host.use('/client',(_req,res,next)=>{if(apiUnavailable)return res.status(503).json({code:'backend_error',message:'Test API unavailable'});next();});
 host.get('/sw.js',(_req,res)=>{const build=JSON.parse(readFileSync('dist/build.json','utf8'));res.set('Cache-Control','no-store').type('application/javascript').send(readFileSync('dist/sw.js','utf8').replaceAll(build.buildId,generation?build.buildId+'-test-'+generation:build.buildId));});
 host.post('/__test/update',(_req,res)=>{generation++;res.json({generation});});
