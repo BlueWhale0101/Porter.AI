@@ -55,7 +55,16 @@ test('local timezone inference, friendly search, explicit override and ordinary/
   await add(page);await page.locator('[name=title]').fill('Local flight');await page.locator('[name=movement]').check();await expect(page.locator('[data-end-zone]')).toBeVisible();
   await page.locator('[name=start]').fill('2026-10-06T10:00');await page.locator('[name=startTimezone]').selectOption('Europe/London');await page.locator('[name=end]').fill('2026-10-06T14:00');await page.locator('[name=endTimezone]').selectOption('Europe/Rome');
   await page.locator('[name=end]').fill('2026-10-06T15:00');await expect(page.locator('[name=endTimezone]')).toHaveValue('Europe/Rome');await page.locator('[data-save-event]').tap();await expect(page.locator('#quick-dialog')).not.toBeVisible();
-  const flight=(await queued(page))[1].arguments.event;expect(flight.temporal.startTimezone).toBe('Europe/London');expect(flight.temporal.endTimezone).toBe('Europe/Rome');
+  const flight=(await queued(page)).find(x=>x.arguments.event.title==='Local flight').arguments.event;expect(flight.temporal.startTimezone).toBe('Europe/London');expect(flight.temporal.endTimezone).toBe('Europe/Rome');
+});
+
+test('repeated Save activation while packet refresh is pending creates one Event',async({page,request})=>{
+  await add(page);await page.locator('[name=title]').fill('One explicit save');await request.post('/__test/hold');
+  await page.locator('[data-save-event]').dblclick();
+  await expect(page.locator('[data-save-event]')).toBeDisabled();
+  expect((await source(request)).filter(e=>e.title==='One explicit save')).toHaveLength(1);expect(await queued(page)).toEqual([]);
+  await request.post('/__test/release');await expect(page.locator('#quick-dialog')).not.toBeVisible();
+  expect((await source(request)).filter(e=>e.title==='One explicit save')).toHaveLength(1);
 });
 
 test('partial native datetime and server validation failure remain drafts',async({page,request})=>{
