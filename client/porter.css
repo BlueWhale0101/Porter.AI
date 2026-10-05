@@ -17,3 +17,49 @@
 #door .ticket .system-state p{font-size:.85rem;margin:0}
 
 #porter-diagnostics{margin:1rem;padding:1rem;border:1px solid var(--ink);font:14px system-ui}#porter-diagnostics pre{white-space:pre-wrap;overflow-wrap:anywhere}.masthead{flex-wrap:wrap}
+
+/* Intrinsic grid/flex widths must not enlarge the phone's layout viewport.
+   Only the explicitly bounded strips/Schedule own horizontal scrolling. */
+html,body{width:100%;max-width:100%;overscroll-behavior-x:none}
+main,main section,.trip-overview,.event-open,.wordmark,.system-state>div{min-width:0;max-width:100%}
+.masthead{grid-template-columns:minmax(0,1fr) auto}
+.trip-overview,.event.next{grid-template-columns:minmax(0,1fr)}
+.event.next:has(.event-art){grid-template-columns:minmax(0,1fr) 104px}
+.event-open{width:100%}.event p,.event small,.trip-overview small,dialog p{overflow-wrap:anywhere}
+.current-strip{width:100%;min-width:0;overscroll-behavior-x:contain}
+.current-card{grid-template-columns:minmax(0,1fr) 70px}
+.current-empty{flex:1 0 auto}
+.itinerary-day{padding-top:32px}
+.itinerary-day>h2{font:700 clamp(1.1rem,4.5vw,1.45rem)/1.3 var(--display);letter-spacing:.04em;color:var(--ink);padding:12px 0;border-top:3px double var(--ink);border-bottom:1px solid var(--rule);margin-bottom:8px}
+.calendar-modes{display:flex;gap:8px}.calendar-modes button{font-size:.85rem}
+.calendar-modes [aria-pressed=true]{background:var(--ink);color:var(--stock)}
+.calendar-caption{font-size:.7rem;margin:8px 0;color:var(--subdued)}
+.week-pager{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:8px;margin-top:12px}
+.week-pager h3{text-align:center;margin:0;font-size:1rem}
+.calendar.week-overview{display:block;min-width:0;width:100%;border:1px solid var(--rule)}
+.week-head,.week-body,.week-edge{display:grid;grid-template-columns:22px repeat(7,minmax(0,1fr))}
+.calendar-date{min-width:0;margin:0;background:var(--paper);text-align:center;padding:6px 1px;font:.61rem/1.4 var(--meta);letter-spacing:-.02em;border-right:1px solid var(--rule)}
+.calendar-date span,.calendar-date strong,.calendar-date small{display:block;white-space:nowrap;font-size:inherit}
+.calendar-date span{text-transform:uppercase}.calendar-date.current-day{box-shadow:inset 0 -3px var(--red)}
+.week-body{height:clamp(300px,48dvh,480px);background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(100% / 17 - 1px),#c7b79b66 calc(100% / 17 - 1px),#c7b79b66 calc(100% / 17))}
+.week-hours,.week-day{position:relative;min-width:0;border-right:1px solid var(--rule)}
+.week-hours span{position:absolute;font:10px var(--meta);left:2px}
+.week-day.current-day{background:#a33e2b06}
+.calendar-block{background:var(--event-color,#e6e1d4);color:var(--ink);border-color:#7b796d}
+.color-terracotta{--event-color:#e8b8a4}.color-olive{--event-color:#c8d0b2}.color-sky{--event-color:#bdd9dc}.color-ochre{--event-color:#e8d399}.color-lavender{--event-color:#d3c8dd}.color-rose{--event-color:#e6c2c7}.color-slate{--event-color:#c0cbd4}
+.calendar-block.tentative{border:1px dashed var(--ink);background-image:repeating-linear-gradient(135deg,transparent 0,transparent 4px,#233e4c18 4px,#233e4c18 6px)}
+.week-day .calendar-block{min-height:0;min-width:0;padding:2px 1px;font-size:9px;line-height:1.15;border-radius:2px}
+.week-day .calendar-block strong{font-weight:500;display:block;overflow:hidden;max-height:100%}
+.week-edge{border-top:1px solid var(--rule)}.week-edge>small{font:9px/1.2 var(--meta);padding:3px 0}
+.week-edge>div{min-width:0;border-right:1px solid var(--rule)}
+.week-edge .calendar-block{position:relative;display:block;width:100%;min-height:28px;padding:2px;font-size:9px;max-height:40px}
+.calendar-scroll{width:100%;max-width:100%;min-width:0;height:min(65dvh,650px);overflow:auto;overscroll-behavior:contain;isolation:isolate}
+.calendar.schedule{display:grid;grid-template-columns:52px repeat(var(--days),180px);min-width:max-content;align-items:start}
+.schedule .calendar-date{position:sticky;top:0;z-index:3;height:54px;font-size:.8rem;border-bottom:1px solid var(--rule)}
+.schedule-corner{position:sticky;top:0;left:0;z-index:5;height:54px;background:var(--paper);padding:12px 3px;font:.75rem var(--meta);border-right:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.schedule-hours{position:sticky;left:0;z-index:2;background:var(--stock);border-right:1px solid var(--rule)}
+.schedule-hours span{display:block;height:72px;padding:3px;font:11px var(--meta)}
+.schedule .calendar-grid{border-right:1px solid var(--rule);min-width:0}
+@media(min-width:720px){.event.next:has(.event-art){grid-template-columns:minmax(0,1fr) 180px}}
+@media(max-width:360px){.event.next:has(.event-art){grid-template-columns:minmax(0,1fr)}.calendar-date{font-size:.55rem}}
+.timezone-picker{display:grid;gap:5px;min-width:0}.timezone-picker[hidden]{display:none}.timezone-picker select{width:100%;min-width:0}#edit-message{margin-top:12px;color:var(--red)}
