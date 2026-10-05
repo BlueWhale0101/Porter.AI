@@ -74,6 +74,9 @@ test('partial native datetime and server validation failure remain drafts',async
   await page.locator('[name=start]').evaluate(input=>{Object.defineProperty(input,'validity',{configurable:true,value:{badInput:true}});});
   await page.locator('[data-save-event]').tap();await expect(page.locator('#edit-message')).toContainText('Complete or clear');expect(await queued(page)).toEqual([]);expect((await source(request)).filter(e=>e.title==='Rejected draft')).toEqual([]);
   await page.locator('[name=start]').evaluate(input=>{delete input.validity;});
-  // Whitespace passes native required but is rejected by the semantic title check.
-  await page.locator('[name=title]').fill('   ');await page.locator('[data-save-event]').tap();await expect(page.locator('#edit-message')).toContainText('title is required');await expect(page.locator('#quick-dialog')).toBeVisible();expect(await queued(page)).toEqual([]);
+  // A source validation rejection must not be treated as an offline write.
+  await page.locator('[name=commitment]').evaluate(select=>select.add(new Option('Invalid','invalid',true,true)));
+  await page.locator('[data-save-event]').tap();await expect(page.locator('#edit-message')).toContainText('Invalid event commitment');await expect(page.locator('#quick-dialog')).toBeVisible();expect(await queued(page)).toEqual([]);
+  await page.locator('[name=commitment]').selectOption('planned');await request.post('/__test/connectivity',{data:{apiAvailable:false}});
+  await page.locator('[name=title]').fill('   ');await page.locator('[data-save-event]').tap();await expect(page.locator('#edit-message')).toContainText('title is required');expect(await queued(page)).toEqual([]);
 });
