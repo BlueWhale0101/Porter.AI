@@ -10,7 +10,7 @@ export default defineConfig({define:{__PORTER_REVISION__:JSON.stringify(revision
     const hash=createHash('sha256').update(JSON.stringify(shell)).update(readFileSync('public/manifest.webmanifest')).update(readFileSync('public/sw.js')).update(readFileSync(`${options.dir}/index.html`)).update(revision);
     for(const path of readdirSync('public/artwork',{recursive:true}).sort())if(/\.(webp|png)$/.test(path))hash.update(path).update(readFileSync('public/artwork/'+path));
     const id=hash.digest('hex').slice(0,12);
-    const source=readFileSync('public/sw.js','utf8').replace("/*__SHELL_FILES__*/['/','/index.html']",JSON.stringify(shell)).replaceAll('__BUILD_ID__',id);
+    const source=readFileSync('public/sw.js','utf8').replace("/*__SHELL_FILES__*/['/','/index.html']",JSON.stringify(shell)).replaceAll('__BUILD_ID__',id).replaceAll('__REVISION__',revision);
     writeFileSync(`${options.dir}/sw.js`,source);
     writeFileSync(`${options.dir}/build.json`,JSON.stringify({revision,buildId:id})+'\n');
   }

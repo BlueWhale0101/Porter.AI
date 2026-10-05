@@ -144,10 +144,11 @@ The build embeds the Git SHA in the client and `dist/build.json`. The worker ID
 hashes revision, HTML, shell paths, manifest, worker code and artwork. Shell/art
 caches rotate together; the art cache remains bounded to 24. `sw.js`, HTML,
 manifest, artwork and build metadata revalidate at the HTTP layer. Hashed Vite
-assets are immutable. A waiting worker activates after old app windows close;
-there is no forced reload or skipWaiting that could interrupt Door Mode. Close
-all Porter tabs/PWA windows and reopen to finish an update. Inspect diagnostics
-if an older controller remains. Installed shell icons are read from the shell
+assets are immutable. A waiting worker is announced by the safe update lifecycle described in
+`docs/v0-acceptance.md`. Explicit Update waits for owned interactions to finish
+before activation and reload. Close other Porter windows before updating.
+A pre-update cached client may still need an initial close/reopen. Diagnostics
+reports running and waiting build state. Installed shell icons are read from the shell
 cache, independently of artwork cache eviction.
 
 To roll back, identify the previous retained release SHA, verify its `build.json`,

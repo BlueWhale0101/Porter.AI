@@ -81,3 +81,103 @@ test('Details → Door retains ownership through a deferred packet',async({page,
   await expect(page.locator('.trip-overview h1')).toHaveText('Updated regression Trip');
   await navigateSurfaces(page);
 });
+
+test('V0 Quick Actions omits Add note; an unscheduled Calendar explains its empty state',async({page,request})=>{
+  await page.locator('#quick').tap();
+  await expect(page.getByRole('button',{name:'Add note',exact:true})).toHaveCount(0);
+  await page.locator('#quick-dialog #close').tap();
+  const {tripId:empty}=await (await request.post('/__test/empty')).json();
+  await page.goto(`/#${empty}`);await expect(page.locator('#status')).toHaveText('Sync complete');
+  await page.locator('[data-surface="calendar"]').tap();
+  await expect(page.locator('.calendar-empty')).toHaveText('No scheduled events yet');
+  await expect(page.locator('.calendar')).toHaveCount(0);
+  await page.locator('#add-event').tap();await expect(page.locator('#quick-dialog #event-form')).toBeVisible();
+});
+
+test('parking lifecycle across restarts (Chromium offline; WebKit API unavailable)',async({page,context,request,browserName})=>{
+  await context.grantPermissions(['geolocation']);await context.setGeolocation({latitude:51.505,longitude:-0.116});
+  await page.reload();await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
+  await expect(page.locator('#status')).toHaveText('Sync complete');
+  const connectivity=async available=>{
+    if(browserName==='webkit')await request.post('/__test/connectivity',{data:{apiAvailable:available}});
+    else await context.setOffline(!available);
+  };
+  await connectivity(false);
+  await page.locator('#quick').tap();await page.locator('#parking').tap();
+  await expect(page.locator('[data-clear-parking]')).toBeVisible();await expect(page.locator('#quick-dialog')).not.toBeVisible();
+  // Linux WebKit offline emulation failed both goto and reload with an internal
+  // navigation error. Exercise API-unavailable local startup there; Chromium
+  // covers fully offline shell navigation. Neither is an actual iPhone test.
+  const restart=async previous=>{
+    const url=previous.url();await previous.close();const next=await context.newPage();await next.goto(url);return next;
+  };
+  let restored=await restart(page);
+  await expect(restored.locator('[data-clear-parking]')).toBeVisible();
+  await restored.locator('[data-clear-parking]').tap();await expect(restored.locator('[data-clear-parking]')).toHaveCount(0);
+  restored=await restart(restored);
+  await expect(restored.locator('#app h1')).toHaveText('Browser regression Trip');
+  await expect(restored.locator('[data-clear-parking]')).toHaveCount(0);
+  expect((await diagnostics(restored)).pendingMutations).toBe(2);
+  await connectivity(true);
+  // A new Chromium automation target can report navigator.onLine=true even
+  // while network emulation rejects requests, so use the normal Sync control.
+  await restored.locator('#refresh').tap();
+  await expect.poll(async()=>{const state=await (await request.get('/__test/parking')).json();return state.knowledge.filter(k=>k.tags.includes('parking')).length;}).toBe(1);
+  await expect.poll(async()=>(await diagnostics(restored)).pendingMutations).toBe(0);
+  expect((await (await request.get('/__test/parking')).json()).current).toEqual([]);
+  await restored.reload();await expect(restored.locator('[data-clear-parking]')).toHaveCount(0);
+});
+
+for(const interaction of ['quick','details','door','edit','quick-edit'])test(`waiting worker preserves ${interaction} until explicit update and release`,async({page,request})=>{
+  await page.reload();await expect(page.locator('#status')).toHaveText('Sync complete');
+  await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
+  const before=await diagnostics(page);const oldBuild=before.serviceWorker.buildId;
+  // Keep an unsent mutation to prove activation does not clear device data.
+  await page.evaluate(async()=>{
+    const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('porter-v0',3);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+    await new Promise((resolve,reject)=>{const tx=db.transaction('mutations','readwrite');tx.objectStore('mutations').put({id:'update-retains-queue',sequence:100,operation:'updateEvent',arguments:{tripId:location.hash.slice(1),eventId:'deliberate-conflict',expectedRevision:0,patch:{title:'Retained'}}});tx.oncomplete=resolve;tx.onerror=reject;});db.close();
+  });
+  let dialog;
+  if(interaction==='quick'){await page.locator('#quick').tap();dialog='#quick-dialog';}
+  else if(interaction==='quick-edit'){await page.locator('#quick').tap();await page.locator('#quick-dialog #add-event').tap();dialog='#quick-dialog';await page.locator('#event-form input[name=title]').fill('Unsaved acceptance edit');}
+  else if(interaction==='edit'){await page.locator('.tabs [data-surface="calendar"]').tap();await page.locator('#add-event').tap();dialog='#quick-dialog';await page.locator('#event-form input[name=title]').fill('Unsaved acceptance edit');}
+  else {await page.locator(`[data-event="${eventId}"]`).first().tap();dialog='#details';if(interaction==='door'){await page.locator('#details #passes').tap();dialog='#door';await expect(page.locator('#door canvas')).toBeVisible();}}
+  await request.post('/__test/update');
+  await page.evaluate(async()=>{await (await navigator.serviceWorker.getRegistration()).update();});
+  await expect(page.locator('#porter-update')).toContainText('Porter update ready');
+  await page.locator('#porter-diagnostics [data-refresh]').evaluate(button=>button.click());
+  await expect(page.locator('#porter-diagnostics pre')).toContainText(oldBuild+'-test-1');
+  const waiting=JSON.parse(await page.locator('#porter-diagnostics pre').innerText());
+  expect(waiting.update.runningBuild).toBe(oldBuild);expect(waiting.update.available).toBe(true);
+  // The modal makes the outside Update button inert to real taps. Programmatic
+  // activation exercises the additional ownership guard, not a UI timing delay.
+  await page.locator('#porter-update button').evaluate(button=>button.click());
+  await expect(page.locator('#porter-update')).toContainText('finish the current action');
+  await expect(page.locator(dialog)).toBeVisible();
+  if(interaction.endsWith('edit'))await expect(page.locator('#event-form input[name=title]')).toHaveValue('Unsaved acceptance edit');
+  const identity=await page.evaluate(()=>new Promise(resolve=>{const ch=new MessageChannel();ch.port1.onmessage=e=>resolve(e.data);navigator.serviceWorker.controller.postMessage({type:'porter-build'},[ch.port2]);}));
+  expect(identity.buildId).toBe(oldBuild);
+  let navigations=0;page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
+  await page.locator(`${dialog} #close`).tap();
+  await expect.poll(()=>navigations).toBe(1);
+  await expect(page.locator('.trip-overview h1')).toHaveText('Browser regression Trip');
+  const after=await diagnostics(page);
+  expect(after.serviceWorker.buildId).toBe(oldBuild+'-test-1');
+  expect(after.localPacketUsable).toBe(true);expect(after.usefulLocalDataAtLaunch).toBe(true);
+  expect(after.requiredArtifacts[0].present).toBe(true);expect(after.pendingMutations).toBe(1);
+  expect(navigations).toBe(1);
+});
+
+test('waiting worker requires consent and refuses activation while another Porter window exists',async({page,context,request})=>{
+  await page.reload();await expect(page.locator('#status')).toHaveText('Sync complete');
+  const second=await context.newPage();await second.goto(page.url());await expect(second.locator('#status')).toHaveText('Sync complete');
+  await second.locator('#quick').tap();
+  await request.post('/__test/update');await page.evaluate(async()=>{await (await navigator.serviceWorker.getRegistration()).update();});
+  await expect(page.locator('#porter-update')).toContainText('Porter update ready');
+  expect(await page.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration()).waiting)).toBe(true);
+  await page.locator('#porter-update button').tap();await expect(page.locator('#porter-update')).toContainText('Close other Porter windows');
+  await expect(second.locator('#quick-dialog')).toBeVisible();await second.close();
+  await page.locator('#porter-update button').tap();
+  await expect(page.locator('#porter-update')).toBeHidden();
+  await expect(page.locator('#status')).toHaveText('Sync complete');
+});

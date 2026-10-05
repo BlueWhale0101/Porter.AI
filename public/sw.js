@@ -2,7 +2,18 @@ const SHELL=/*__SHELL_FILES__*/['/','/index.html'];
 const SHELL_CACHE='porter-shell-__BUILD_ID__',ART_CACHE='porter-art-__BUILD_ID__';
 self.addEventListener('install',event=>event.waitUntil(caches.open(SHELL_CACHE).then(cache=>cache.addAll(SHELL))));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>(key.startsWith('porter-shell-')&&key!==SHELL_CACHE)||(key.startsWith('porter-art-')&&key!==ART_CACHE)).map(key=>caches.delete(key))))));
-self.addEventListener('message',event=>{if(event.data?.type==='porter-build')event.ports?.[0]?.postMessage({buildId:'__BUILD_ID__',shellCache:SHELL_CACHE,artCache:ART_CACHE});});
+self.addEventListener('message',event=>{if(event.data?.type==='porter-build')event.ports?.[0]?.postMessage({revision:'__REVISION__',buildId:'__BUILD_ID__',shellCache:SHELL_CACHE,artCache:ART_CACHE});});
+// Activation is user-requested. Conservatively require a single Porter window:
+// another window could be showing a ticket or an unsaved editor.
+self.addEventListener('message',event=>{
+  if(event.data?.type!=='porter-activate')return;
+  event.waitUntil((async()=>{
+    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    if(windows.length!==1||windows[0].id!==event.source?.id){event.ports?.[0]?.postMessage({accepted:false,reason:'Close other Porter windows, then try Update again.'});return;}
+    event.ports?.[0]?.postMessage({accepted:true});
+    await self.skipWaiting();
+  })());
+});
 self.addEventListener('fetch',event=>{
   const request=event.request,url=new URL(request.url);
   if(request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/client/')||url.pathname.startsWith('/auth/')||url.pathname==='/health'||url.pathname==='/build.json'||request.headers.has('Authorization'))return;
