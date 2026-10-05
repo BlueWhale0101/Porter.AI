@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { validateTemporal } from './temporal.js';
 
 export const TRIP_LIFECYCLES = new Set(['draft', 'upcoming', 'active', 'archived']);
 export const EVENT_COMMITMENTS = new Set(['optional', 'planned', 'confirmed', 'completed', 'cancelled']);
@@ -75,9 +76,6 @@ function validateEvent(event) {
   } else if (spatial.origin || spatial.destination) throw new TypeError('Non-movement Event cannot have origin/destination');
   validateTemporal(event.temporal ?? {});
   for (const artifact of event.artifacts ?? []) validateArtifact(artifact);
-}
-function validateTemporal(temporal) {
-  for (const field of ['start','end']) if (temporal[field] != null && (typeof temporal[field] !== 'string' || Number.isNaN(Date.parse(temporal[field])))) throw new TypeError(`Invalid Event temporal ${field}`);
 }
 function validateKnowledge(knowledge) {
   if (!knowledge.title?.trim() || knowledge.content == null || String(knowledge.content).trim() === '') throw new TypeError('Knowledge title and content are required');

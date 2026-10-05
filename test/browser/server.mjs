@@ -45,6 +45,12 @@ host.post('/__test/rich',async(_req,res)=>{
   res.json({tripId:rich.id,ids});
 });
 host.get('/__test/parking',async(_req,res)=>res.json({knowledge:await service.listKnowledge(trip.id),current:(await service.tripContext(trip.id)).current.parkingKnowledge}));
+host.get('/__test/events',async(req,res)=>res.json(await service.listEvents(req.query.tripId??trip.id)));
+host.post('/__test/editor',async(_req,res)=>{
+  const target=await service.createTrip({title:'Editor regression',lifecycle:'active'});
+  for(const [title,start,end,zone] of [['London stay','2026-10-01','2026-10-06','Europe/London'],['Rome stay','2026-10-06','2026-10-15','Europe/Rome']])await service.createEvent(target.id,{title,accommodation:true,temporal:{start:start+'T12:00:00Z',end:end+'T10:00:00Z',startTimezone:zone,endTimezone:zone}});
+  res.json({tripId:target.id});
+});
 host.post('/__test/reset',async(_req,res)=>{await reset();res.json({tripId:trip.id,eventId:event.id});});
 host.post('/__test/hold',async(_req,res)=>{
   trip=await service.updateTrip(trip.id,{title:'Updated regression Trip'},trip.revision);

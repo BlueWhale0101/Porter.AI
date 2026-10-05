@@ -44,10 +44,10 @@ test('manual color edits remain local through reload and appear in both calendar
   const {tripId,eventId}=await(await request.post('/__test/reset')).json();await page.goto(`/#${tripId}`);await expect(page.locator('#status')).toHaveText('Sync complete');
   await page.evaluate(()=>navigator.serviceWorker.ready);await request.post('/__test/connectivity',{data:{apiAvailable:false}});
   await page.locator('[data-surface=calendar]').tap();await page.locator(`.week-day [data-event="${eventId}"]`).tap();await page.locator('#details #edit').tap();
-  await page.locator('[name=calendarColor]').selectOption('terracotta');await page.locator('#event-form button[type=submit]').tap();await expect(page.locator('#details')).not.toBeVisible();
+  await page.locator('[name=calendarColor]').selectOption('terracotta');await page.locator('#event-form [data-save-event]').tap();await expect(page.locator('#details')).not.toBeVisible();
   await expect(page.locator('.week-day .color-terracotta')).toBeVisible();
   await page.reload();await expect(page.locator('.trip-overview h1')).toHaveText('Browser regression Trip');await page.locator('[data-surface=calendar]').tap();await expect(page.locator('.week-day .color-terracotta')).toBeVisible();
   await page.getByRole('button',{name:'Schedule',exact:true}).tap();await expect(page.locator('.schedule .color-terracotta')).toHaveCount(1);
   await page.locator('.schedule .color-terracotta').tap();await page.locator('#details #edit').tap();await expect(page.locator('[name=calendarColor]')).toHaveValue('terracotta');
-  await page.locator('[name=calendarColor]').selectOption('');await page.locator('#event-form button[type=submit]').tap();await expect(page.locator('.color-terracotta')).toHaveCount(0);
+  await page.locator('[name=calendarColor]').selectOption('');await page.locator('#event-form [data-save-event]').tap();await expect(page.locator('.color-terracotta')).toHaveCount(0);
 });

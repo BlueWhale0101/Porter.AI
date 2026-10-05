@@ -1,4 +1,5 @@
 const clone = value => structuredClone(value);
+import { calendarParts,validTimezone } from '../src/temporal.js';
 const localFormatters=new Map();
 
 const localParts = (value, timeZone) => {
@@ -27,17 +28,16 @@ export function localDateTimeValue(value, timeZone) {
 /** Converts a datetime-local value in the supplied Event zone to a source instant. */
 export function zonedDateTimeToIso(value, timeZone) {
   if (!value) return null;
-  if (!timeZone) throw new TypeError('A timezone is required when entering an Event time.');
-  const [date,time] = value.split('T'); const [year,month,day]=date.split('-').map(Number); const [hour,minute]=time.split(':').map(Number);
-  const guess=Date.UTC(year,month-1,day,hour,minute);
-  const format = instant => { const x=localParts(new Date(instant).toISOString(),timeZone); return x ? x.day.replaceAll('-','') + String(Math.floor(x.minute/60)).padStart(2,'0') + String(x.minute%60).padStart(2,'0') : ''; };
-  const wanted=`${String(year).padStart(4,'0')}${String(month).padStart(2,'0')}${String(day).padStart(2,'0')}${String(hour).padStart(2,'0')}${String(minute).padStart(2,'0')}`;
-  let instant=guess;
-  for(let i=0;i<3&&format(instant)!==wanted;i++) {
-    const shown=format(instant); const shownDate=Date.UTC(Number(shown.slice(0,4)),Number(shown.slice(4,6))-1,Number(shown.slice(6,8)),Number(shown.slice(8,10)),Number(shown.slice(10,12)));
-    instant += guess - shownDate;
-  }
-  return new Date(instant).toISOString();
+  const [year,month,day,hour,minute,second,ms]=calendarParts(value);
+  if (!validTimezone(timeZone)) throw new TypeError('Choose a timezone for this Event.');
+  const wall=Date.UTC(year,month-1,day,hour,minute);
+  // Probe both sides of any nearby offset transition. Exact round trips reject
+  // nonexistent DST times and ambiguous repeated hours rather than guessing.
+  const offsets=new Set();
+  for(const delta of [-36,0,36]){const probe=wall+delta*3600000,p=localParts(new Date(probe).toISOString(),timeZone);offsets.add(Date.parse(p.day+'T00:00:00Z')+p.minute*60000-probe);}
+  const matches=[...offsets].map(offset=>wall-offset).filter(instant=>{const p=localParts(new Date(instant).toISOString(),timeZone);return p.day===value.slice(0,10)&&p.minute===hour*60+minute;});
+  if(matches.length!==1)throw new TypeError(matches.length?'This local time occurs twice because clocks change. Choose an unambiguous time.':'This local time does not exist because clocks change. Choose another time.');
+  return new Date(matches[0]+second*1000+ms).toISOString();
 }
 
 export function eventLocalDay(event) { return localParts(event.temporal?.start, event.temporal?.startTimezone)?.day ?? null; }
