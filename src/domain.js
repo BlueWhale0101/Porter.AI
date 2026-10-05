@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { validateTemporal } from './temporal.js';
+import { validateEventVisual } from './event-visual.js';
 
 export const TRIP_LIFECYCLES = new Set(['draft', 'upcoming', 'active', 'archived']);
 export const EVENT_COMMITMENTS = new Set(['optional', 'planned', 'confirmed', 'completed', 'cancelled']);
@@ -68,6 +69,7 @@ function validateTrip(trip) {
   if (!TRIP_LIFECYCLES.has(trip.lifecycle ?? 'draft')) throw new TypeError('Invalid trip lifecycle');
 }
 function validateEvent(event) {
+  validateEventVisual(event.visual);
   if (!event.title?.trim()) throw new TypeError('Event title is required');
   if (!EVENT_COMMITMENTS.has(event.commitment ?? 'planned')) throw new TypeError('Invalid event commitment');
   const spatial = event.spatial ?? {};

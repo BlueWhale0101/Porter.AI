@@ -63,3 +63,9 @@ main,main section,.trip-overview,.event-open,.wordmark,.system-state>div{min-wid
 @media(min-width:720px){.event.next:has(.event-art){grid-template-columns:minmax(0,1fr) 180px}}
 @media(max-width:360px){.event.next:has(.event-art){grid-template-columns:minmax(0,1fr)}.calendar-date{font-size:.55rem}}
 .timezone-picker{display:grid;gap:5px;min-width:0}.timezone-picker[hidden]{display:none}.timezone-picker select{width:100%;min-width:0}#edit-message{margin-top:12px;color:var(--red)}
+/* Explicit Event illustration: fixed geometry; copy never waits for artwork. */
+.event-open.has-event-icon{grid-template-columns:40px minmax(0,1fr);column-gap:10px;align-items:start}
+.event-icon{display:block;width:40px;height:40px;overflow:hidden;pointer-events:none}
+.event-icon img{display:block;width:40px;height:40px;object-fit:contain}
+.event-open>.event-copy{display:grid;gap:5px;min-width:0;font-size:inherit}
+.event-copy>span{font-size:.9rem}

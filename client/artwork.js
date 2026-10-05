@@ -1,7 +1,8 @@
 // Presentation only. Never writes inferred roles back into Event source truth.
+import { EVENT_VISUAL_ROLES,eventVisualRole,eventIconPath } from '../src/event-visual.js';
 const families = {
   brand: ['brand', '', []],
-  event: ['event-illustrations', 'event', ['accommodation','airport','cafe','city','destination','flight','hire','museum','outdoors','theatre','train']],
+  event: ['event-illustrations', 'event', EVENT_VISUAL_ROLES.filter(role=>role!=='none')],
   current: ['current-state', 'state', ['accommodation','hire','parked']],
   system: ['system-states', 'system', ['no-active-trip','offline-ready','missing-artifact','sync-failed']],
   stamp: ['status-stamps', 'stamp', ['added-later','archived','later','next','now','parked-here','past','ready-offline','ticket-ready']],
@@ -47,6 +48,11 @@ export function artMarkup(asset, className='illustration') {
   if(!asset)return '';
   const descriptor=typeof asset==='string'?{src:asset}:asset;
   return `<span class="${escape(className)}" aria-hidden="true"><img src="${escape(descriptor.src)}" ${descriptor.fallback?`data-art-fallback="${escape(descriptor.fallback)}"`:''} alt="" width="640" height="640" loading="lazy" decoding="async" fetchpriority="low"></span>`;
+}
+// Deliberately separate from the larger resolver: no title, structural or URL fallback.
+export function eventIconMarkup(event){
+  const src=eventIconPath(eventVisualRole(event));
+  return src?`<span class="event-icon" aria-hidden="true"><img src="${src}" alt="" width="40" height="40" decoding="async" loading="lazy" fetchpriority="low"></span>`:'';
 }
 export function systemMarkup(state) {
   const [title,copy]=systemCopy[state]??systemCopy['no-active-trip'];
