@@ -46,7 +46,10 @@ test('Add/Edit visual choice survives pending IndexedDB reload, sync, perspectiv
   await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('train'));expect((await source(request)).find(e=>e.id===ids.museum).visual.visual_role).toBe('museum');
   await page.reload();await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('train'));await expect(row(page,ids.museum)).toContainText('Pending sync');
   await request.post('/__test/connectivity',{data:{apiAvailable:true}});await page.locator('#refresh').tap();await expect(page.locator('#status')).toHaveText('Sync complete');
-  expect((await source(request)).find(e=>e.id===ids.museum).visual).toEqual({visual_role:'train',color:'sky'});
+  // Packet refresh precedes queue replay; wait for semantic acknowledgement,
+  // then for the authoritative packet to replace the pending overlay.
+  await expect.poll(async()=>(await source(request)).find(e=>e.id===ids.museum).visual).toEqual({visual_role:'train',color:'sky'});
+  await expect(row(page,ids.museum)).not.toContainText('Pending sync');
   await Promise.all([page.waitForResponse(r=>r.url().includes('/packet?perspective=wes')&&r.ok()),page.locator('#perspective').selectOption('wes')]);await expect(page.locator('#status')).toHaveText('Sync complete');await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('train'));
   await edit(page,ids.museum);await page.locator('[name=visualRole]').selectOption('none');await page.locator('[data-save-event]').tap();await expect(page.locator('#details')).not.toBeVisible();await expect(row(page,ids.museum).locator('.event-icon')).toHaveCount(0);
   expect((await source(request)).find(e=>e.id===ids.museum).visual).toEqual({visual_role:'none',color:'sky'});
