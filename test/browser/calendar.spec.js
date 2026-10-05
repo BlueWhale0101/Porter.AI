@@ -30,6 +30,10 @@ test('local phone week, paging, Details and sticky Schedule do not request data 
   await page.getByRole('button',{name:'Previous week',exact:true}).tap();await expect(page.locator('.week-pager h3')).toHaveText(heading);
   const block=page.locator('.week-day .calendar-block').first(),title=await block.getAttribute('aria-label');await block.tap();await expect(page.locator('#details')).toBeVisible();await expect(page.locator('#details h2')).toHaveText(title.replace(' · Optional (tentative)',''));await page.locator('#details #close').tap();
   await page.getByRole('button',{name:'Schedule',exact:true}).tap();await noOverflow(page);
+  const tentative=page.locator('.schedule .tentative').first();
+  await expect(tentative).toHaveAttribute('aria-label',/Optional \(tentative\)/);
+  expect(await tentative.evaluate(el=>getComputedStyle(el).borderTopStyle)).toBe('dashed');
+  expect(await tentative.evaluate(el=>getComputedStyle(el).backgroundImage)).not.toBe('none');
   await page.locator('.calendar-scroll').evaluate(el=>{el.scrollTop=300;el.scrollLeft=250;});
   const positions=await page.locator('.calendar-scroll').evaluate(el=>{const r=el.getBoundingClientRect(),h=el.querySelector('.calendar-date').getBoundingClientRect(),t=el.querySelector('.schedule-hours').getBoundingClientRect(),c=el.querySelector('.schedule-corner').getBoundingClientRect();return {top:r.top,left:r.left,header:h.top,time:t.left,cornerTop:c.top,cornerLeft:c.left,scrollX:window.scrollX};});
   expect(Math.abs(positions.header-positions.top)).toBeLessThan(2);expect(Math.abs(positions.time-positions.left)).toBeLessThan(2);expect(Math.abs(positions.cornerTop-positions.top)).toBeLessThan(2);expect(Math.abs(positions.cornerLeft-positions.left)).toBeLessThan(2);expect(positions.scrollX).toBe(0);

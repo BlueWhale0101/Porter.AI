@@ -8,7 +8,7 @@ import JsBarcode from 'jsbarcode';
 import { IndexedDbStore, PerformanceTrace, replayQueue, startLocalFirst } from './core.js';
 import { InteractionController, releaseAndAdoptIfSafe } from './interaction.js';
 import { activeJourney, doorEntries, eventTime, localTime, mapUrl, navigationFor, requestLocation, ticketSummary } from './journey.js';
-import { calendarProjection, itineraryProjection, localDateTimeValue, planningDetails, tripPlanningSummary, withPendingEvents, zonedDateTimeToIso } from './planning.js';
+import { itineraryProjection, localDateTimeValue, planningDetails, tripPlanningSummary, withPendingEvents, zonedDateTimeToIso } from './planning.js';
 import { hasUsableLocalPacket, newParticipantId, normalizeParticipants, participantRemovalAllowed } from './library.js';
 
 import { artwork, artMarkup, resolveArtwork, systemMarkup, installArtFallback } from './artwork.js';
