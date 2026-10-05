@@ -11,7 +11,8 @@ test('Current State empty message belongs only to an empty strip, including narr
   await page.setViewportSize({width:320,height:740});await rich(page,request);
   await expect(page.locator('.current-card')).toHaveCount(2);await expect(page.locator('.current-empty')).toHaveCount(0);await noOverflow(page);
   await page.locator('.current-strip').evaluate(el=>{el.scrollLeft=200;});expect(await page.locator('.current-strip').evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
-  const {tripId}=await(await request.post('/__test/empty')).json();await page.goto(`/#${tripId}`);await expect(page.locator('#status')).toHaveText('Sync complete');
+  // A hash-only goto is same-document navigation, not a new local-first launch.
+  const {tripId}=await(await request.post('/__test/empty')).json();await page.goto(`/?empty-case=1#${tripId}`);await expect(page.locator('.trip-overview h1')).toHaveText('Unscheduled Journey');await expect(page.locator('#status')).toHaveText('Sync complete');
   await expect(page.locator('.current-empty')).toHaveText('No current state');await expect(page.locator('.current-card')).toHaveCount(0);await noOverflow(page);
 });
 
@@ -35,7 +36,7 @@ test('local phone week, paging, Details and sticky Schedule do not request data 
   await noOverflow(page);expect(requests).toEqual([]);
 });
 
-test('manual color edits remain local through reload and appear in both calendars',async({page,request,context})=>{
+test('manual color edits remain local through reload and appear in both calendars',async({page,request})=>{
   const {tripId,eventId}=await(await request.post('/__test/reset')).json();await page.goto(`/#${tripId}`);await expect(page.locator('#status')).toHaveText('Sync complete');
   await page.evaluate(()=>navigator.serviceWorker.ready);await request.post('/__test/connectivity',{data:{apiAvailable:false}});
   await page.locator('[data-surface=calendar]').tap();await page.locator(`.week-day [data-event="${eventId}"]`).tap();await page.locator('#details #edit').tap();
