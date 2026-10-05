@@ -1,3 +1,4 @@
+import { EVENT_VISUAL_ROLES,eventIconPath } from '../src/event-visual.js';
 import { readFileSync,readdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 const build=JSON.parse(readFileSync('dist/build.json','utf8'));
@@ -8,3 +9,5 @@ const manifest=JSON.parse(readFileSync('dist/manifest.webmanifest','utf8'));asse
 for(const icon of manifest.icons)assert.ok(readFileSync('dist'+icon.src).length);
 for(const path of readdirSync('dist/assets').filter(x=>x.endsWith('.js'))){const js=readFileSync('dist/assets/'+path,'utf8');assert.ok(!js.includes('DEVELOPMENT FIXTURE'));assert.ok(!js.includes('fixture-only'));assert.ok(!js.includes('Porter V0 Acceptance Journey'));assert.ok(!js.includes('Add note'));}
 console.log(JSON.stringify({productionBuild:true,...build,icons:manifest.icons.length,fixtureCodeExcluded:true}));
+
+for(const path of EVENT_VISUAL_ROLES.map(eventIconPath).filter(Boolean)){assert.ok(readFileSync('dist'+path).length<=12000);assert.ok(worker.includes(JSON.stringify(path)),path+' missing from shell precache');}

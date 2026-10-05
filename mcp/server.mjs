@@ -8,11 +8,14 @@ import { ConflictError } from '../src/domain.js';
 import { HierarchyError } from '../src/persistent-service.js';
 import { NotFoundError, OwnershipError } from '../src/repository.js';
 import { AuthenticationError } from '../src/runtime.js';
+import { EVENT_VISUAL_ROLES } from '../src/event-visual.js';
 
 const json = value => ({content:[{type:'text',text:JSON.stringify(value,null,2)}]});
 export const mcpError = error => ({isError:true,content:[{type:'text',text:JSON.stringify({error:{code:errorCode(error),message:error.message}})}]});
 const invoke = operation => async input => { try { return json(await operation(input)); } catch(error) { return mcpError(error); } };
 const record=z.record(z.unknown()); const revision=z.number().int().positive();
+// Retain extensible Event aspects while exposing the deliberate visual choice to Assistant.
+const eventFields=z.object({visual:z.object({visual_role:z.enum(EVENT_VISUAL_ROLES).nullable().optional().describe('Optional presentation artwork only; omitted/null/none means no small icon. Choose deliberately; never an Event type.')}).passthrough().nullable().optional()}).passthrough();
 
 /** Semantic MCP surface: no table or SQL operations are exposed. */
 export function createPorterMcpServer(service) {
@@ -22,8 +25,8 @@ export function createPorterMcpServer(service) {
   server.registerTool('get_trip_context',{description:'Get deterministic TripPacket context. Device-local artifact readiness is not claimed.',inputSchema:{tripId:z.string().uuid(),perspectiveParticipantId:z.string().optional(),now:z.string().datetime().optional()}},invoke(({tripId,...options})=>service.tripContext(tripId,options)));
   server.registerTool('create_trip',{description:'Create an owned Trip from semantic Trip fields.',inputSchema:{trip:record}},invoke(({trip})=>service.createTrip(trip)));
   server.registerTool('update_trip',{description:'Patch an owned Trip with optimistic revision.',inputSchema:{tripId:z.string().uuid(),patch:record,expectedRevision:revision}},invoke(x=>service.updateTrip(x.tripId,x.patch,x.expectedRevision)));
-  server.registerTool('create_event',{description:'Create a sparse or detailed generic Event within an owned Trip.',inputSchema:{tripId:z.string().uuid(),event:record}},invoke(x=>service.createEvent(x.tripId,x.event)));
-  server.registerTool('update_event',{description:'Patch an Event with optimistic revision and hierarchy validation.',inputSchema:{eventId:z.string().uuid(),patch:record,expectedRevision:revision}},invoke(x=>service.updateEvent(x.eventId,x.patch,x.expectedRevision)));
+  server.registerTool('create_event',{description:'Create a sparse or detailed generic Event within an owned Trip. Optional visual.visual_role selects a Porter illustration; it has no domain semantics.',inputSchema:{tripId:z.string().uuid(),event:eventFields}},invoke(x=>service.createEvent(x.tripId,x.event)));
+  server.registerTool('update_event',{description:'Patch an Event with optimistic revision and hierarchy validation. visual replaces the visual aspect: preserve its other fields when changing visual_role; none clears the small icon.',inputSchema:{eventId:z.string().uuid(),patch:eventFields,expectedRevision:revision}},invoke(x=>service.updateEvent(x.eventId,x.patch,x.expectedRevision)));
   server.registerTool('create_knowledge',{description:'Create sparse Trip Knowledge.',inputSchema:{tripId:z.string().uuid(),knowledge:record}},invoke(x=>service.createKnowledge(x.tripId,x.knowledge)));
   server.registerTool('update_knowledge',{description:'Patch Knowledge with optimistic revision.',inputSchema:{knowledgeId:z.string().uuid(),patch:record,expectedRevision:revision}},invoke(x=>service.updateKnowledge(x.knowledgeId,x.patch,x.expectedRevision)));
   server.registerTool('attach_artifact_metadata',{description:'Attach Event-owned artifact metadata; storage references remain opaque.',inputSchema:{eventId:z.string().uuid(),artifact:record,expectedRevision:revision}},invoke(x=>service.attachArtifactMetadata(x.eventId,x.artifact,x.expectedRevision)));
