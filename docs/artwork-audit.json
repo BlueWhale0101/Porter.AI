@@ -132,6 +132,17 @@
     "use": "Centred subject; square or modest landscape crop; use at 96px+."
   },
   {
+    "file": "event-illustrations/porter-event-food.png",
+    "family": "event-illustrations",
+    "width": 1254,
+    "height": 1254,
+    "format": "png",
+    "transparent": false,
+    "bytes": 3137418,
+    "deliveryBytes": 118222,
+    "use": "Centred subject; square or modest landscape crop; use at 96px+."
+  },
+  {
     "file": "event-illustrations/porter-event-hire.png",
     "family": "event-illustrations",
     "width": 1254,

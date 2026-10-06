@@ -13,7 +13,7 @@ async function edit(page,id){await row(page,id).tap();await page.locator('#detai
 
 test('shell-cached icons render (Chromium offline; WebKit origin unavailable); Next stays large',async({page,context,request,browserName})=>{
   await expect(page.locator('.next .event-icon')).toHaveCount(0);await expect(page.locator('.next .event-art')).toHaveCount(1);
-  await expect(page.locator('.event-icon')).toHaveCount(10);await expect(row(page,ids.none).locator('.event-icon')).toHaveCount(0);
+  await expect(page.locator('.event-icon')).toHaveCount(EVENT_VISUAL_ROLES.length-2);await expect(row(page,ids.none).locator('.event-icon')).toHaveCount(0);
   await expect(page.locator('.next .event-art img')).toHaveAttribute('src','/artwork/event-illustrations/porter-event-flight.webp');
   const paths=EVENT_VISUAL_ROLES.map(eventIconPath).filter(Boolean);
   const cached=await page.evaluate(async paths=>{const keys=await caches.keys();const shell=await caches.open(keys.find(k=>k.startsWith('porter-shell-')));for(const k of keys.filter(k=>k.startsWith('porter-art-')))await caches.delete(k);return Promise.all(paths.map(async p=>Boolean(await shell.match(p))));},paths);
@@ -38,19 +38,19 @@ test('shell-cached icons render (Chromium offline; WebKit origin unavailable); N
 
 test('Add/Edit visual choice survives pending IndexedDB reload, sync, perspective and clearing',async({page,request})=>{
   await page.locator('.tabs [data-surface=itinerary]').tap();await page.locator('#add-event').tap();
-  await expect(page.locator('[name=visualRole]')).toHaveValue('none');await expect(page.locator('[name=visualRole] option')).toHaveCount(12);
-  await page.locator('[name=title]').fill('Manual café');await page.locator('[name=visualRole]').selectOption({label:'Café'});await page.locator('[data-save-event]').tap();await expect(page.locator('#quick-dialog')).not.toBeVisible();
-  await expect.poll(async()=>(await source(request)).some(e=>e.title==='Manual café')).toBe(true);const added=(await source(request)).find(e=>e.title==='Manual café');expect(added.visual.visual_role).toBe('cafe');await expect(row(page,added.id).locator('.event-icon')).toHaveCount(1);
+  await expect(page.locator('[name=visualRole]')).toHaveValue('none');await expect(page.locator('[name=visualRole] option')).toHaveCount(EVENT_VISUAL_ROLES.length);
+  await page.locator('[name=title]').fill('Manual food');await page.locator('[name=visualRole]').selectOption({label:'Food'});await page.locator('[data-save-event]').tap();await expect(page.locator('#quick-dialog')).not.toBeVisible();
+  await expect.poll(async()=>(await source(request)).some(e=>e.title==='Manual food')).toBe(true);const added=(await source(request)).find(e=>e.title==='Manual food');expect(added.visual.visual_role).toBe('food');await expect(row(page,added.id).locator('.event-icon')).toHaveCount(1);
   await request.post('/__test/connectivity',{data:{apiAvailable:false}});
-  await edit(page,ids.museum);await expect(page.locator('[name=visualRole]')).toHaveValue('museum');await page.locator('[name=visualRole]').selectOption('train');await page.locator('[data-save-event]').tap();await expect(page.locator('#details')).not.toBeVisible();
-  await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('train'));expect((await source(request)).find(e=>e.id===ids.museum).visual.visual_role).toBe('museum');
-  await page.reload();await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('train'));await expect(row(page,ids.museum)).toContainText('Pending sync');
+  await edit(page,ids.museum);await expect(page.locator('[name=visualRole]')).toHaveValue('museum');await page.locator('[name=visualRole]').selectOption('food');await page.locator('[data-save-event]').tap();await expect(page.locator('#details')).not.toBeVisible();
+  await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('food'));expect((await source(request)).find(e=>e.id===ids.museum).visual.visual_role).toBe('museum');
+  await page.reload();await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('food'));await expect(row(page,ids.museum)).toContainText('Pending sync');
   await request.post('/__test/connectivity',{data:{apiAvailable:true}});await page.locator('#refresh').tap();await expect(page.locator('#status')).toHaveText('Sync complete');
   // Packet refresh precedes queue replay; wait for semantic acknowledgement,
   // then for the authoritative packet to replace the pending overlay.
-  await expect.poll(async()=>(await source(request)).find(e=>e.id===ids.museum).visual).toEqual({visual_role:'train',color:'sky'});
+  await expect.poll(async()=>(await source(request)).find(e=>e.id===ids.museum).visual).toEqual({visual_role:'food',color:'sky'});
   await expect(row(page,ids.museum)).not.toContainText('Pending sync');
-  await Promise.all([page.waitForResponse(r=>r.url().includes('/packet?perspective=wes')&&r.ok()),page.locator('#perspective').selectOption('wes')]);await expect(page.locator('#status')).toHaveText('Sync complete');await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('train'));
+  await Promise.all([page.waitForResponse(r=>r.url().includes('/packet?perspective=wes')&&r.ok()),page.locator('#perspective').selectOption('wes')]);await expect(page.locator('#status')).toHaveText('Sync complete');await expect(row(page,ids.museum).locator('img')).toHaveAttribute('src',eventIconPath('food'));
   await edit(page,ids.museum);await page.locator('[name=visualRole]').selectOption('none');await page.locator('[data-save-event]').tap();await expect(page.locator('#details')).not.toBeVisible();await expect(row(page,ids.museum).locator('.event-icon')).toHaveCount(0);
   await expect.poll(async()=>(await source(request)).find(e=>e.id===ids.museum).visual).toEqual({visual_role:'none',color:'sky'});
 });

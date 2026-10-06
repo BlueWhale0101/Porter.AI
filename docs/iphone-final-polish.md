@@ -23,9 +23,9 @@ Diagnostics retain `eventLocalSaveMs`; first hydration has separate `first_remot
 ## Phone presentation
 
 - Editable controls use at least 16 CSS px; tap controls use `touch-action: manipulation`. Intentional pinch zoom stays enabled. Existing page overflow containment remains.
-- Event rows have a 68 px left-hand illustration (64 px on the narrowest phones), with one CSS paper frame/crop. Next retains its larger art. Shell-cached derivatives are 144 px and total 67,912 bytes for eleven roles; originals are untouched.
+- Event rows have a 68 px left-hand illustration (64 px on the narrowest phones), with one CSS paper frame/crop. Next retains its larger art. Shell-cached derivatives are 144 px and total 75,970 bytes for twelve roles; originals are untouched.
 - Journey uses compact known-zone, same-day time ranges. Other days keep a date prefix; cross-day and movement/differing-zone rows retain necessary date/zone context. Details are unchanged.
-- The canonical **food** original has not been supplied in this checkout. No substitute artwork or unbacked role was added. Integrate it through the existing vocabulary/pipeline when supplied.
+- The canonical **food** source from merged PR #15 is preserved unchanged. Food uses the existing explicit `visual_role`, friendly selector, MCP enum, resolver and shell-cached derivative path. No title/content inference is added.
 
 No export, sharing/collaboration, Diary or planning feature is added. Trips remain private/live; future exports may be static snapshots. Native collaboration is not planned.
 
