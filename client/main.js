@@ -136,10 +136,10 @@ async function launch(tripId=location.hash.slice(1)||null,perspective=undefined,
     trace:new PerformanceTrace({revision:__PORTER_REVISION__,eventLocalSaveMs:lastEventSaveMs,online:navigator.onLine,pwa:matchMedia('(display-mode:standalone)').matches})});
   if(!isCurrent())return;activeRun=run;
   if(!run.tripId){await openLibrary();return;}
-  if(run.local?.meta?.usable){perspectiveParticipantId=run.perspectiveParticipantId;history.replaceState(null,'','#'+run.tripId);}
+  if(run.local?.meta?.usable){perspectiveParticipantId=run.perspectiveParticipantId;if(location.hash!=='#'+run.tripId)history.replaceState(null,'','#'+run.tripId);}
   const outcome=await run.sync;if(!isCurrent())return;
   if(!outcome.ok){status.textContent=run.local?.meta?.usable?'Sync failed · local data retained':'Trip preparation failed · Retry';document.querySelector('#visual-notice').innerHTML=packet?systemMarkup(navigator.onLine?'sync-failed':'offline-ready'):'';return;}
-  perspectiveParticipantId=run.perspectiveParticipantId;history.replaceState(null,'','#'+run.tripId);await retireEventReceipts(store,outcome.packet);
+  perspectiveParticipantId=run.perspectiveParticipantId;if(location.hash!=='#'+run.tripId)history.replaceState(null,'','#'+run.tripId);await retireEventReceipts(store,outcome.packet);
   if(replay&&(await store.pending()).length)syncEvents();
 }
 if(fixtureMode){
