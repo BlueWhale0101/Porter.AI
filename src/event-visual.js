@@ -1,5 +1,5 @@
 // Presentation vocabulary, never Event types or operational projection rules.
-export const EVENT_VISUAL_ROLES=Object.freeze(['none','accommodation','airport','cafe','city','destination','flight','hire','museum','outdoors','theatre','train']);
+export const EVENT_VISUAL_ROLES=Object.freeze(['none','accommodation','airport','cafe','city','destination','flight','food','hire','museum','outdoors','theatre','train']);
 export const eventVisualRole=event=>EVENT_VISUAL_ROLES.includes(event?.visual?.visual_role)?event.visual.visual_role:'none';
 export const eventVisualLabel=role=>role==='cafe'?'Café':role==='hire'?'Hire car':role[0].toUpperCase()+role.slice(1);
 export const eventIconPath=role=>EVENT_VISUAL_ROLES.includes(role)&&role!=='none'?`/artwork/event-icons/porter-event-${role}.webp`:null;

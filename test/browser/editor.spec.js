@@ -6,7 +6,7 @@ test.beforeEach(async({page,context,request})=>{
   await page.goto(`/#${tripId}`);await expect(page.locator('#status')).toHaveText('Sync complete');
 });
 const source=async request=>(await(await request.get('/__test/events',{params:{tripId}})).json());
-const queued=page=>page.evaluate(()=>new Promise((resolve,reject)=>{const open=indexedDB.open('porter-v0',3);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,r=db.transaction('mutations').objectStore('mutations').getAll();r.onsuccess=()=>{resolve(r.result.filter(x=>['createEvent','updateEvent'].includes(x.operation)));db.close();};};}));
+const queued=page=>page.evaluate(()=>new Promise((resolve,reject)=>{const open=indexedDB.open('porter-v0',3);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,r=db.transaction('mutations').objectStore('mutations').getAll();r.onsuccess=()=>{resolve(r.result.filter(x=>['createEvent','updateEvent'].includes(x.operation)&&x.state!=='acknowledged'));db.close();};};}));
 async function add(page){await page.locator('#quick').tap();await page.locator('#quick-dialog #add-event').tap();await expect(page.locator('#event-form')).toBeVisible();}
 async function editorTrip(page,request){({tripId}=await(await request.post('/__test/editor')).json());await page.goto(`/?editor=1#${tripId}`);await expect(page.locator('#status')).toHaveText('Sync complete');}
 
@@ -35,10 +35,10 @@ test('explicit Save creates exactly once; invalid input and synthetic activation
   await page.locator('[name=start]').fill('2026-10-05T12:30');await page.locator('[name=startTimezone]').selectOption('Europe/London');
   await page.locator('[data-save-event]').evaluate(button=>button.click());expect((await source(request)).length).toBe(before);
   await page.locator('[data-save-event]').focus();await page.locator('[data-save-event]').press('Enter');await expect(page.locator('#quick-dialog')).not.toBeVisible();
-  const events=await source(request);expect(events.length).toBe(before+1);expect(events.filter(e=>e.title==='Explicit Event')).toHaveLength(1);expect(await queued(page)).toEqual([]);
+  await expect.poll(async()=>(await source(request)).length).toBe(before+1);await expect.poll(async()=>(await queued(page)).length).toBe(0);const events=await source(request);expect(events.length).toBe(before+1);expect(events.filter(e=>e.title==='Explicit Event')).toHaveLength(1);expect(await queued(page)).toEqual([]);
   const event=events.find(e=>e.title==='Explicit Event');expect(event.temporal.start).toBe('2026-10-05T11:30:00.000Z');
   await page.locator('[data-surface=itinerary]').tap();await page.locator(`[data-event="${event.id}"]`).tap();await page.locator('#details #edit').tap();await page.locator('[name=description]').fill('Normal online edit');await page.locator('[data-save-event]').tap();await expect(page.locator('#details')).not.toBeVisible();
-  expect((await source(request)).find(e=>e.id===event.id).description).toBe('Normal online edit');expect(await queued(page)).toEqual([]);
+  await expect.poll(async()=>(await source(request)).find(e=>e.id===event.id).description).toBe('Normal online edit');await expect.poll(async()=>(await queued(page)).length).toBe(0);
 });
 
 test('local timezone inference, friendly search, explicit override and ordinary/movement zones',async({page,request})=>{
@@ -61,8 +61,8 @@ test('local timezone inference, friendly search, explicit override and ordinary/
 test('repeated Save activation while packet refresh is pending creates one Event',async({page,request})=>{
   await add(page);await page.locator('[name=title]').fill('One explicit save');await request.post('/__test/hold');
   await page.locator('[data-save-event]').dblclick();
-  await expect(page.locator('[data-save-event]')).toBeDisabled();
-  expect((await source(request)).filter(e=>e.title==='One explicit save')).toHaveLength(1);expect(await queued(page)).toEqual([]);
+  await expect(page.locator('#quick-dialog')).not.toBeVisible();await expect(page.locator('#event-confirmation')).toContainText('Saved');
+  await expect.poll(async()=>(await source(request)).filter(e=>e.title==='One explicit save').length).toBe(1);await expect.poll(async()=>(await queued(page)).length).toBe(0);
   await request.post('/__test/release');await expect(page.locator('#quick-dialog')).not.toBeVisible();
   expect((await source(request)).filter(e=>e.title==='One explicit save')).toHaveLength(1);
 });

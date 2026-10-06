@@ -13,3 +13,21 @@ const usableExternalUrl=value=>{try{const url=new URL(value);return url.protocol
 export function doorEntries(packet,eventId,artifacts){const event=packet.events[eventId];return (packet.access??[]).filter(access=>access.eventId===eventId).map((access,index)=>{const candidates=(access.artifactIds??[]).map(id=>(packet.artifactManifest??[]).find(a=>a.eventId===eventId&&a.id===id)).filter(Boolean);const verified=candidates.map(a=>({manifest:a,cache:artifacts.find(c=>c.id===artifactCacheId(packet.trip.id,eventId,a.id)&&c.state==='verified'&&(!a.version||a.version===c.version)&&(!a.checksum||a.checksum===c.checksum))})).filter(x=>x.cache);const code=verified.find(x=>x.manifest.code);const source=code??verified[0]??null;const metadata=source?.manifest??candidates[0]??{};return {id:access.requirementId,label:participantName(packet.trip,access.participantId,index),status:access.status,ready:Boolean(source)&&access.status!=='external_dynamic',artifact:source?.manifest??null,cache:source?.cache??null,allArtifacts:verified,sourceUrl:usableExternalUrl(metadata.sourceUrl??event.booking?.sourceUrl),appUrl:usableExternalUrl(metadata.appUrl??event.booking?.appUrl)};});}
 export function ticketSummary(packet,eventId,artifacts){const eventAccess=(packet.access??[]).filter(x=>x.eventId===eventId);const r=readiness({...packet,access:eventAccess},artifacts);return r.external? 'Requires venue app':`${r.ready}/${r.required} ready offline`;}
 export function requestLocation(geolocation){return new Promise((resolve,reject)=>{if(!geolocation?.getCurrentPosition){reject(new Error('Geolocation is unavailable on this device.'));return;}geolocation.getCurrentPosition(position=>resolve({latitude:position.coords.latitude,longitude:position.coords.longitude,capturedAt:new Date(position.timestamp).toISOString()}),()=>reject(new Error('Location unavailable. Please try again when location is available.')),{enableHighAccuracy:false,timeout:10000});});}
+
+/** Compact only when both endpoints share a known zone and calendar day. */
+export function journeyTime(event,{now=new Date().toISOString(),locale='en-US'}={}){
+  const t=event.temporal??{},zone=t.startTimezone,endZone=t.endTimezone??zone;
+  const full=()=>{const parts=eventTime(event);return `${parts.departure??parts.start??'Timing not set'}${parts.arrival?' → '+parts.arrival:parts.end?' – '+parts.end:''}`;};
+  if(!t.start||!zone)return full();
+  try{
+    const day=value=>new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+    if(event.movement||endZone!==zone){
+      const stamp=(value,timeZone)=>new Intl.DateTimeFormat(locale,{timeZone,year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(value));
+      return stamp(t.start,zone)+(t.end?' → '+stamp(t.end,endZone):'');
+    }
+    if(t.end&&day(t.start)!==day(t.end))return full();
+    const formatter=new Intl.DateTimeFormat(locale,{timeZone:zone,hour:'numeric',minute:'2-digit'});
+    const time=(t.end?formatter.formatRange(new Date(t.start),new Date(t.end)):formatter.format(new Date(t.start))).replace(/\s*–\s*/g,'–').replace(/\u202f/g,' ');
+    return (day(t.start)===day(now)?'':new Intl.DateTimeFormat(locale,{timeZone:zone,year:'numeric',month:'short',day:'numeric'}).format(new Date(t.start))+' · ')+time;
+  }catch{return full();}
+}

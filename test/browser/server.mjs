@@ -15,8 +15,9 @@ import { acceptanceData } from '../../scripts/acceptance-data.mjs';
 const owner='11111111-1111-4111-8111-111111111111';
 const original=Buffer.from('PORTER BROWSER REGRESSION — NOT A VALID ADMISSION');
 let service,trip,event,held=false,waiting=0,release,gate,generation=0,apiUnavailable=false,iconsUnavailable=false;
+let mutationHeld=false,mutationWaiting=0,mutationGate=Promise.resolve(),releaseMutation;
 async function reset(){
-  release?.();generation=0;apiUnavailable=false;iconsUnavailable=false;held=false;waiting=0;gate=Promise.resolve();
+  release?.();releaseMutation?.();mutationHeld=false;mutationWaiting=0;mutationGate=Promise.resolve();generation=0;apiUnavailable=false;iconsUnavailable=false;held=false;waiting=0;gate=Promise.resolve();
   service=new PersistentPorterService(new MemoryRepository(),owner);
   trip=await service.createTrip({title:'Browser regression Trip',lifecycle:'active'});
   event=await service.createEvent(trip.id,{
@@ -33,6 +34,10 @@ async function reset(){
 }
 await reset();
 const host=express();host.use(express.json());
+host.post('/__test/mutation-hold',(_req,res)=>{mutationHeld=true;mutationWaiting=0;mutationGate=new Promise(resolve=>releaseMutation=resolve);res.json({ok:true});});
+host.post('/__test/mutation-release',(_req,res)=>{mutationHeld=false;releaseMutation?.();res.json({ok:true});});
+host.get('/__test/mutation-state',(_req,res)=>res.json({waiting:mutationWaiting}));
+host.use('/client/mutate',async(_req,_res,next)=>{if(mutationHeld){mutationWaiting++;await mutationGate;}next();});
 host.post('/__test/connectivity',(req,res)=>{apiUnavailable=!req.body.apiAvailable;if(req.body.iconsAvailable!==undefined)iconsUnavailable=!req.body.iconsAvailable;res.json({apiUnavailable,iconsUnavailable});});
 host.use('/artwork/event-icons',(_req,res,next)=>{if(iconsUnavailable)return res.status(503).end();next();});
 host.use('/client',(_req,res,next)=>{if(apiUnavailable)return res.status(503).json({code:'backend_error',message:'Test API unavailable'});next();});

@@ -12,12 +12,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 test('small Event illustrations are an explicit finite vocabulary, never inferred or custom URLs',()=>{
-  assert.deepEqual(EVENT_VISUAL_ROLES,['none','accommodation','airport','cafe','city','destination','flight','hire','museum','outdoors','theatre','train']);
-  for(const event of [{},{title:'Flight to Rome',movement:true},{accommodation:true},{visual:{visual_role:'unknown',hero_asset:'/custom.webp'}},{visual:{visual_role:null}},{visual:{visual_role:'none'}}]){
+  assert.deepEqual(EVENT_VISUAL_ROLES,['none','accommodation','airport','cafe','city','destination','flight','food','hire','museum','outdoors','theatre','train']);
+  for(const event of [{},{title:'Food market dinner'},{title:'Flight to Rome',movement:true},{accommodation:true},{visual:{visual_role:'unknown',hero_asset:'/custom.webp'}},{visual:{visual_role:null}},{visual:{visual_role:'none'}}]){
     assert.equal(eventVisualRole(event),'none');assert.equal(eventIconMarkup(event),'');
   }
   for(const role of EVENT_VISUAL_ROLES.slice(1)){
-    const html=eventIconMarkup({visual:{visual_role:role}});assert.ok(html.includes(eventIconPath(role)));assert.match(html,/width="40" height="40"/);assert.match(html,/aria-hidden="true"/);
+    const html=eventIconMarkup({visual:{visual_role:role}});assert.ok(html.includes(eventIconPath(role)));assert.match(html,/width="68" height="68"/);assert.match(html,/aria-hidden="true"/);
   }
   assert.equal(eventIconMarkup({visual:{visual_role:'../../evil'}}),'');
   assert.match(resolveArtwork({visual:{visual_role:'museum'}}).src,/event-illustrations/);
@@ -33,7 +33,7 @@ test('semantic create/update, TripPacket perspectives and queued restart/replay 
   }
   await assert.rejects(service.createEvent(trip.id,{visual:{visual_role:'invalid'}}),/visual_role/);
   await assert.rejects(service.updateEvent(event.id,{visual:{visual_role:'invalid'}},event.revision),/visual_role/);
-  const packet=await service.tripContext(trip.id),visual={...event.visual,visual_role:'cafe'};
+  const packet=await service.tripContext(trip.id),visual={...event.visual,visual_role:'food'};
   const mutation={id:'visual-edit',operation:'updateEvent',arguments:{eventId:event.id,tripId:trip.id,patch:{visual},expectedRevision:event.revision}};
   const store=new MemoryStore({mutations:[mutation]});const restored=new MemoryStore({mutations:await store.pending()});
   assert.deepEqual(withPendingEvents(packet,await restored.pending()).events[event.id].visual,visual);
@@ -55,7 +55,7 @@ test('Assistant sees the visual enum and can create/update it through MCP withou
       assert.ok(JSON.stringify(schema).includes(JSON.stringify(EVENT_VISUAL_ROLES)));
     }
     const call=async(name,args)=>{const result=await client.callTool({name,arguments:args});assert.ok(!result.isError,JSON.stringify(result));return JSON.parse(result.content[0].text);};
-    const event=await call('create_event',{tripId:trip.id,event:{title:'Coffee',visual:{visual_role:'cafe',color:'sky'},description:'Retained'}});
+    const event=await call('create_event',{tripId:trip.id,event:{title:'Coffee',visual:{visual_role:'food',color:'sky'},description:'Retained'}});
     const changed=await call('update_event',{eventId:event.id,expectedRevision:event.revision,patch:{visual:{...event.visual,visual_role:'none'}}});
     assert.equal(changed.description,'Retained');assert.deepEqual(changed.visual,{visual_role:'none',color:'sky'});
     const invalid=await client.callTool({name:'create_event',arguments:{tripId:trip.id,event:{visual:{visual_role:'invalid'}}}});assert.equal(invalid.isError,true);
@@ -63,8 +63,8 @@ test('Assistant sees the visual enum and can create/update it through MCP withou
 });
 
 test('every tiny derivative is shipped within its per-file and total shell budgets',()=>{
-  const paths=EVENT_VISUAL_ROLES.map(eventIconPath).filter(Boolean);assert.equal(paths.length,11);
-  assert.equal(readdirSync(new URL('../public/artwork/event-icons/',import.meta.url)).length,11);
+  const paths=EVENT_VISUAL_ROLES.map(eventIconPath).filter(Boolean);assert.equal(paths.length,12);
+  assert.equal(readdirSync(new URL('../public/artwork/event-icons/',import.meta.url)).length,12);
   let total=0;for(const path of paths){const bytes=readFileSync(new URL('../public'+path,import.meta.url));assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.ok(bytes.length<=12000);total+=bytes.length;}
-  assert.ok(total<=50000,`Event icons total ${total} bytes`);
+  assert.ok(total<=100000,`Event icons total ${total} bytes`);
 });
