@@ -79,5 +79,5 @@ button,a,input,select,textarea,summary,[role="button"]{touch-action:manipulation
 @media(max-width:360px){.event-open.has-event-icon{grid-template-columns:64px minmax(0,1fr);column-gap:10px}.event-icon{width:64px;height:64px}}
 .trip-danger{margin-top:1.5rem;padding-top:1rem;border-top:2px solid #aa5444;color:#74392f}
 .trip-danger p{line-height:1.5}.trip-danger .destructive{border:2px solid #a24d3e;color:#74392f;background:#f7e9dd}
-.trip-danger #confirm-delete{display:block;margin-top:1rem;background:#843e32;color:#fff8e9}
-.trip-danger [hidden],#trip-form[hidden]{display:none}
+.trip-danger #confirm-delete,.trip-danger #confirm-event-delete{display:block;margin-top:1rem;background:#843e32;color:#fff8e9}
+.trip-danger [hidden],#trip-form[hidden],#event-form[hidden]{display:none}
