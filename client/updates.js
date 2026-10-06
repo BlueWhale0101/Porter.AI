@@ -72,6 +72,13 @@ export async function activateCurrentWorker({getRegistration,getController,runni
     // Door/editor ownership may have changed during asynchronous discovery.
     if(interactions.active)return {deferred:true};
     const answer=await message(waiting,{type:'porter-activate'});
+    // An accepted skipWaiting request is not yet completed activation. Chromium
+    // can leave this page on its old controller; observe the worker itself too.
+    if(answer?.accepted&&waiting.state!=='activated'&&waiting.state!=='redundant')await new Promise(resolve=>{
+      const finish=()=>{clearTimeout(timer);waiting.removeEventListener?.('statechange',check);resolve();};
+      const check=()=>{if(waiting.state==='activated'||waiting.state==='redundant')finish();};
+      const timer=setTimeout(finish,2000);waiting.addEventListener?.('statechange',check);check();
+    });
     reg=await getRegistration();
     const active=await activeResult(reg);if(active)return active;
     return answer??{accepted:false,reason:'Update changed. Try again.'};

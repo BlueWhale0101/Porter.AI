@@ -90,3 +90,11 @@ test('activation response lost during worker transition is recovered from active
   const result=await activateCurrentWorker({getRegistration:async()=>({waiting,active:worker}),getController:()=>worker,runningRevision:'old',interactions,message:async(_w,m)=>{if(m.type==='porter-activate'){waiting=null;worker.state='activated';return null;}return {revision:'new',buildId:'new'};}});
   assert.deepEqual(result,{accepted:true,active:true});
 });
+test('accepted activation completes from worker state without a controllerchange event',async()=>{
+  const interactions=new InteractionController(),worker=new EventTarget();worker.state='installed';let waiting=worker;
+  const result=await activateCurrentWorker({getRegistration:async()=>({waiting,active:worker}),getController:()=>({state:'activated'}),runningRevision:'old',interactions,message:async(w,m)=>{
+    if(m.type==='porter-activate'){setTimeout(()=>{waiting=null;worker.state='activated';worker.dispatchEvent(new Event('statechange'));},0);return {accepted:true};}
+    return {revision:w===worker?'new':'old',buildId:w===worker?'new':'old'};
+  }});
+  assert.deepEqual(result,{accepted:true,active:true});
+});
