@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "porter-ai",
+  "version": "0.1.0",
+  "description": "Conversational travel planning and trip-state workflows for Porter.AI using its private semantic MCP tools.",
+  "author": { "name": "Porter.AI" },
+  "repository": "https://github.com/BlueWhale0101/Porter.AI",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Porter.AI",
+        "shortDescription": "Build and manage live trips",
+        "longDescription": "Use ChatGPT conversation to build, inspect and update Porter.AI Trips, Events and Knowledge through Porter's semantic MCP surface. Porter remains the private source of truth for live trip state.",
+        "developerName": "Porter.AI",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": [
+          "Show me my current trip.",
+          "Build my trip from these travel details.",
+          "Add this to tomorrow's itinerary."
+        ]
+      }
+    }
+  }
+}
