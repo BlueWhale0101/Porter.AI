@@ -1,4 +1,8 @@
-# V0 Trip deletion (app management only)
+# V0 Trip and Event deletion (app management only)
+
+Event Details → Edit → Delete Event… uses the same deliberate online confirmation. Deleting a composite parent also deletes its children; the confirmation names the Event and child count. Trip-owned Knowledge is retained, with removed Event links stripped and revisions incremented atomically. Other Events and Trips are unchanged. Pending local edits must sync first; deletion itself is not an offline queued operation or Undo action.
+
+GET `/client/events/:id/deletion` and DELETE `/client/events/:id` use the same owned aggregate revision vector and security-invoker transaction. Neither `delete_trip` nor `delete_event` is exposed to MCP or the generic conversational mutation dispatcher. Event removal receipts contain only IDs in local settings. All cached perspectives, related artifacts and queued edits are purged/projected locally; older arriving packets are filtered against those receipts before display and after restart. The existing authoritative projection is reused; no Event semantics are added.
 
 Trips → Edit → Delete Trip… opens a named, irreversible confirmation with Event/Knowledge counts. Keep Trip leaves source/cache untouched. Confirm requires an authenticated connection; no offline mutation or Saved · Undo is created. Failures retain the local Trip and explain retry/conflict. A changed cached Trip must be synchronized and reviewed again.
 

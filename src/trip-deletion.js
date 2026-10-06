@@ -19,8 +19,13 @@ export async function tripDeletionPreview(service,id){
 }
 export async function deleteAppTrip(service,id,expected,{logger=entry=>console.warn(JSON.stringify(entry))}={}){
   validateDeletionRevision(expected);await service.getTrip(id);
-  // Database rechecks auth.uid(), ownership and every revision under row locks.
   const result=await service.repository.deleteTrip(service.ownerId,id,expected);
+  return {deleted:true,tripId:id,cleanupPending:await cleanDeletedArtifacts(service,id,result,logger)};
+}
+export const eventSubtree=(events,id)=>{const ids=new Set([id]);let changed=true;while(changed){changed=false;for(const e of events)if(ids.has(e.parentEventId)&&!ids.has(e.id)){ids.add(e.id);changed=true;}}return [...ids];};
+export async function eventDeletionPreview(service,id){const event=await service.getEvent(id),preview=await tripDeletionPreview(service,event.tripId),events=await service.listEvents(event.tripId);return {...preview,event,eventIds:eventSubtree(events,id)};}
+export async function deleteAppEvent(service,id,expected,{logger=entry=>console.warn(JSON.stringify(entry))}={}){validateDeletionRevision(expected);const event=await service.getEvent(id),result=await service.repository.deleteEvent(service.ownerId,event.tripId,id,expected);return {deleted:true,tripId:event.tripId,eventIds:result.eventIds,cleanupPending:await cleanDeletedArtifacts(service,event.tripId,result,logger)};}
+async function cleanDeletedArtifacts(service,id,result,logger){
   let cleanupPending=0;
   for(const item of result.artifacts??[]){
     const ref=item.artifact?.storageRef;
@@ -28,5 +33,5 @@ export async function deleteAppTrip(service,id,expected,{logger=entry=>console.w
     if(!service.artifactStorage||ref.bucket!==service.artifactStorage.bucket||typeof ref.key!=='string'||ref.key.split('/').length!==4||ref.key.split('/').some(x=>x==='.'||x==='..')||ref.key!==`${id}/${item.eventId}/${item.artifact.id}/original`){cleanupPending++;continue;}
     try{await service.artifactStorage.delete(ref);}catch{cleanupPending++;logger({operation:'trip_artifact_cleanup_failed',tripId:id,eventId:item.eventId,artifactId:item.artifact.id});}
   }
-  return {deleted:true,tripId:id,cleanupPending};
+  return cleanupPending;
 }

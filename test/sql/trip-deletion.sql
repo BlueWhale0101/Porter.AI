@@ -14,6 +14,7 @@ insert into public.travel_knowledge(id,trip_id,title,content,related_event_ids) 
  ('ffffffff-ffff-4fff-8fff-ffffffffffff','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Note','Delete','["dddddddd-dddd-4ddd-8ddd-dddddddddddd"]'),
  ('99999999-9999-4999-8999-999999999999','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Note','Keep','[]');
 do $$begin
+ if has_function_privilege('anon','public.porter_app_delete_event(uuid,uuid,jsonb)','execute') or has_function_privilege('service_role','public.porter_app_delete_event(uuid,uuid,jsonb)','execute') then raise exception 'Event RPC exposed';end if;
  if has_function_privilege('anon','public.porter_app_delete_trip(uuid,jsonb)','execute') or has_function_privilege('service_role','public.porter_app_delete_trip(uuid,jsonb)','execute') then raise exception 'RPC exposed to non-app roles';end if;
  begin update public.travel_events set trip_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' where id='cccccccc-cccc-4ccc-8ccc-cccccccccccc';raise exception 'cross-Trip parent move allowed';exception when foreign_key_violation then null;end;
 end$$;
@@ -21,9 +22,23 @@ set role authenticated;
 select set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',false);
 do $$begin
  begin perform public.porter_app_delete_trip('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','{}');raise exception 'non-owner deleted';exception when sqlstate 'P0404' then null;end;
+ begin perform public.porter_app_delete_event('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','cccccccc-cccc-4ccc-8ccc-cccccccccccc','{}');raise exception 'non-owner deleted Event';exception when sqlstate 'P0404' then null;end;
  if exists(select 1 from public.travel_trips) then raise exception 'RLS exposed another owner';end if;
 end$$;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+do $$declare expected jsonb='{"trip":1,"events":{"cccccccc-cccc-4ccc-8ccc-cccccccccccc":1,"dddddddd-dddd-4ddd-8ddd-dddddddddddd":1},"knowledge":{"ffffffff-ffff-4fff-8fff-ffffffffffff":1}}';result jsonb;begin
+ begin perform public.porter_app_delete_event('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','cccccccc-cccc-4ccc-8ccc-cccccccccccc','{}');raise exception 'stale Event deletion allowed';exception when sqlstate 'P0409' then null;end;
+ -- Exercise the real function, then roll back this subtransaction to reuse the
+ -- same aggregate for the independent whole-Trip cascade checks below.
+ begin
+ result=public.porter_app_delete_event('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','cccccccc-cccc-4ccc-8ccc-cccccccccccc',expected);
+ if jsonb_array_length(result->'eventIds')<>2 or jsonb_array_length(result->'artifacts')<>1 then raise exception 'Event cleanup result incomplete';end if;
+ if (select count(*) from public.travel_events)<>1 or (select count(*) from public.travel_trips)<>2 then raise exception 'Event subtree removal incorrect';end if;
+ if not exists(select 1 from public.travel_knowledge where id='ffffffff-ffff-4fff-8fff-ffffffffffff' and related_event_ids='[]' and revision=2) then raise exception 'Knowledge not retained and unlinked';end if;
+ if not exists(select 1 from public.travel_events where title='Keep' and revision=1) then raise exception 'unrelated Event changed';end if;
+ raise exception 'rollback test only' using errcode='P0999';
+ exception when sqlstate 'P0999' then null;end;
+end$$;
 do $$declare expected jsonb='{"trip":1,"events":{"cccccccc-cccc-4ccc-8ccc-cccccccccccc":1,"dddddddd-dddd-4ddd-8ddd-dddddddddddd":1},"knowledge":{"ffffffff-ffff-4fff-8fff-ffffffffffff":1}}';result jsonb;begin
  begin perform public.porter_app_delete_trip('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',null);raise exception 'null expectation deleted';exception when sqlstate 'P0409' then null;end;
  update public.travel_events set revision=2 where id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';

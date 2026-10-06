@@ -13,6 +13,7 @@ export const knowledgeToRow = item => ({ id:item.id, trip_id:item.tripId, title:
 /** Supabase persistence boundary. All methods return Porter domain shapes, never rows. */
 export class SupabasePorterRepository {
   constructor(client) { this.client=client; }
+  async deleteEvent(ownerId,tripId,id,expected) { const {data,error}=await this.client.rpc('porter_app_delete_event',{p_trip_id:tripId,p_event_id:id,p_expected:expected});if(error?.code==='P0409')throw new ConflictError(id,expected.trip,'aggregate changed');if(error?.code==='P0404')throw new NotFoundError('Event',id);if(error)throw error;return data; }
   async deleteTrip(ownerId,id,expected) { const {data,error}=await this.client.rpc('porter_app_delete_trip',{p_trip_id:id,p_expected:expected}); if(error?.code==='P0409')throw new ConflictError(id,expected.trip,'aggregate changed');if(error?.code==='P0404')throw new NotFoundError('Trip',id);if(error)throw error;return data; }
   async insertTrip(trip) { return tripFromRow(await one(this.client.from('travel_trips').insert(tripToRow(trip)).select().single())); }
   async listTrips(ownerId) { return (await many(this.client.from('travel_trips').select('*').eq('owner_id',ownerId).order('created_at'))).map(tripFromRow); }
