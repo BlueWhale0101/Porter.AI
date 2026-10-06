@@ -11,6 +11,19 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: porter-test
+          POSTGRES_DB: porter_test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: porter-test
+      PGDATABASE: porter_test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,6 +34,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: bash test/sql/run.sh
       - run: npm run build
       - run: node scripts/check-build.mjs
       - run: npx playwright install --with-deps chromium webkit

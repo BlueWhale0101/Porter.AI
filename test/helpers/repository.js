@@ -1,7 +1,9 @@
 import { ConflictError } from '../../src/domain.js';
 import { NotFoundError } from '../../src/repository.js';
+import { aggregateRevisions,assertDeletionRevision } from '../../src/trip-deletion.js';
 export class MemoryRepository {
   trips=new Map();events=new Map();knowledge=new Map();
+  async deleteTrip(owner,id,expected){const trip=this.trips.get(id);if(!trip||trip.ownerId!==owner)throw new NotFoundError('Trip',id);const events=[...this.events.values()].filter(x=>x.tripId===id),knowledge=[...this.knowledge.values()].filter(x=>x.tripId===id);assertDeletionRevision(expected,aggregateRevisions(trip,events,knowledge));const artifacts=events.flatMap(e=>e.artifacts.map(artifact=>({eventId:e.id,artifact})));events.forEach(x=>this.events.delete(x.id));knowledge.forEach(x=>this.knowledge.delete(x.id));this.trips.delete(id);return {artifacts};}
   async insertTrip(x){this.trips.set(x.id,structuredClone(x));return structuredClone(x);}
   async listTrips(owner){return [...this.trips.values()].filter(x=>x.ownerId===owner).map(x=>structuredClone(x));}
   async getTrip(owner,id){const x=this.trips.get(id);if(!x||x.ownerId!==owner)throw new NotFoundError('Trip',id);return structuredClone(x);}

@@ -34,6 +34,12 @@ async function reset(){
 }
 await reset();
 const host=express();host.use(express.json());
+let deleteFailure=false;
+host.use('/client/trips',(_req,res,next)=>{if(_req.method==='DELETE'&&deleteFailure)return res.status(503).json({code:'backend_error',message:'Deletion service unavailable'});next();});
+host.post('/__test/delete-failure',(req,res)=>{deleteFailure=Boolean(req.body.fail);res.json({ok:true});});
+host.post('/__test/deletion',async(_req,res)=>{deleteFailure=false;const parent=await service.createEvent(trip.id,{title:'Disposable composite'});await service.createEvent(trip.id,{title:'Disposable child',parentEventId:parent.id});const other=await service.createTrip({title:'Untouched Journey'});await service.createEvent(other.id,{title:'Untouched Event'});await service.createKnowledge(other.id,{title:'Untouched note',content:'Retain'});res.json({tripId:trip.id,otherId:other.id});});
+host.get('/__test/aggregate',(_req,res)=>res.json({trips:[...service.repository.trips.values()],events:[...service.repository.events.values()],knowledge:[...service.repository.knowledge.values()]}));
+host.post('/__test/deletion-change',async(_req,res)=>{await service.createEvent(trip.id,{title:'Concurrent Event'});res.json({ok:true});});
 host.post('/__test/mutation-hold',(_req,res)=>{mutationHeld=true;mutationWaiting=0;mutationGate=new Promise(resolve=>releaseMutation=resolve);res.json({ok:true});});
 host.post('/__test/mutation-release',(_req,res)=>{mutationHeld=false;releaseMutation?.();res.json({ok:true});});
 host.get('/__test/mutation-state',(_req,res)=>res.json({waiting:mutationWaiting}));
