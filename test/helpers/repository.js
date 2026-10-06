@@ -1,7 +1,10 @@
 import { ConflictError } from '../../src/domain.js';
 import { NotFoundError } from '../../src/repository.js';
+import { aggregateRevisions,assertDeletionRevision,eventSubtree } from '../../src/trip-deletion.js';
 export class MemoryRepository {
   trips=new Map();events=new Map();knowledge=new Map();
+  async deleteEvent(owner,tripId,id,expected){const trip=this.trips.get(tripId);if(!trip||trip.ownerId!==owner||this.events.get(id)?.tripId!==tripId)throw new NotFoundError('Event',id);const events=[...this.events.values()].filter(x=>x.tripId===tripId),knowledge=[...this.knowledge.values()].filter(x=>x.tripId===tripId);assertDeletionRevision(expected,aggregateRevisions(trip,events,knowledge));const ids=eventSubtree(events,id),artifacts=events.filter(e=>ids.includes(e.id)).flatMap(e=>e.artifacts.map(artifact=>({eventId:e.id,artifact})));ids.forEach(id=>this.events.delete(id));for(const k of knowledge)if(k.relatedEventIds.some(id=>ids.includes(id))){k.relatedEventIds=k.relatedEventIds.filter(id=>!ids.includes(id));k.revision++;k.updatedAt=new Date().toISOString();}return {eventIds:ids,artifacts};}
+  async deleteTrip(owner,id,expected){const trip=this.trips.get(id);if(!trip||trip.ownerId!==owner)throw new NotFoundError('Trip',id);const events=[...this.events.values()].filter(x=>x.tripId===id),knowledge=[...this.knowledge.values()].filter(x=>x.tripId===id);assertDeletionRevision(expected,aggregateRevisions(trip,events,knowledge));const artifacts=events.flatMap(e=>e.artifacts.map(artifact=>({eventId:e.id,artifact})));events.forEach(x=>this.events.delete(x.id));knowledge.forEach(x=>this.knowledge.delete(x.id));this.trips.delete(id);return {artifacts};}
   async insertTrip(x){this.trips.set(x.id,structuredClone(x));return structuredClone(x);}
   async listTrips(owner){return [...this.trips.values()].filter(x=>x.ownerId===owner).map(x=>structuredClone(x));}
   async getTrip(owner,id){const x=this.trips.get(id);if(!x||x.ownerId!==owner)throw new NotFoundError('Trip',id);return structuredClone(x);}
