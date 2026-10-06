@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { parkingCaptureId, matchesParking } from './parking.js';
 import { newTrip, newEvent, newKnowledge, revise, validateArtifact } from './domain.js';
 import { buildTripPacket } from './projection.js';
@@ -11,7 +12,18 @@ export class PersistentPorterService {
   async listTrips() { return this.repository.listTrips(this.ownerId); }
   async getTrip(id) { return this.repository.getTrip(this.ownerId,id); }
   async updateTrip(id,patch,expectedRevision) { const current=await this.getTrip(id),next=revise(current,patch,expectedRevision); await this.#assertParticipantRemovals(current,next); return this.repository.updateTrip(this.ownerId,next,expectedRevision); }
-  async createEvent(tripId,input) { await this.getTrip(tripId); await this.#assertParent(tripId,input.parentEventId); const event=newEvent(input,tripId); this.#assertArtifactReferences(event); return this.repository.insertEvent(event); }
+  async createEvent(tripId,input,mutationId=null) {
+    await this.getTrip(tripId);await this.#assertParent(tripId,input.parentEventId);
+    const event=newEvent(input,tripId);
+    if(mutationId){
+      if(typeof mutationId!=='string'||mutationId.length>128)throw new TypeError('Invalid mutation ID');
+      const h=createHash('sha256').update(JSON.stringify([this.ownerId,tripId,mutationId])).digest('hex');
+      event.id=`${h.slice(0,8)}-${h.slice(8,12)}-5${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;
+      try{return await this.getEvent(event.id);}catch(error){if(!(error instanceof NotFoundError))throw error;}
+    }
+    this.#assertArtifactReferences(event);
+    try{return await this.repository.insertEvent(event);}catch(error){if(mutationId){try{return await this.getEvent(event.id);}catch{}}throw error;}
+  }
   async listEvents(tripId) { await this.getTrip(tripId); return this.repository.listEvents(tripId); }
   async getEvent(id) { const item=await this.repository.getEvent(id); await this.getTrip(item.tripId); return item; }
   async updateEvent(id,patch,expectedRevision) { const current=await this.getEvent(id); await this.#assertParent(current.tripId,patch.parentEventId,current.id); const event=revise(current,patch,expectedRevision); this.#assertArtifactReferences(event); return this.repository.updateEvent(event,expectedRevision); }

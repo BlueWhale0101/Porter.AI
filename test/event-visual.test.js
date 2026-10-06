@@ -17,7 +17,7 @@ test('small Event illustrations are an explicit finite vocabulary, never inferre
     assert.equal(eventVisualRole(event),'none');assert.equal(eventIconMarkup(event),'');
   }
   for(const role of EVENT_VISUAL_ROLES.slice(1)){
-    const html=eventIconMarkup({visual:{visual_role:role}});assert.ok(html.includes(eventIconPath(role)));assert.match(html,/width="40" height="40"/);assert.match(html,/aria-hidden="true"/);
+    const html=eventIconMarkup({visual:{visual_role:role}});assert.ok(html.includes(eventIconPath(role)));assert.match(html,/width="68" height="68"/);assert.match(html,/aria-hidden="true"/);
   }
   assert.equal(eventIconMarkup({visual:{visual_role:'../../evil'}}),'');
   assert.match(resolveArtwork({visual:{visual_role:'museum'}}).src,/event-illustrations/);
@@ -66,5 +66,5 @@ test('every tiny derivative is shipped within its per-file and total shell budge
   const paths=EVENT_VISUAL_ROLES.map(eventIconPath).filter(Boolean);assert.equal(paths.length,11);
   assert.equal(readdirSync(new URL('../public/artwork/event-icons/',import.meta.url)).length,11);
   let total=0;for(const path of paths){const bytes=readFileSync(new URL('../public'+path,import.meta.url));assert.equal(bytes.toString('ascii',8,12),'WEBP');assert.ok(bytes.length<=12000);total+=bytes.length;}
-  assert.ok(total<=50000,`Event icons total ${total} bytes`);
+  assert.ok(total<=100000,`Event icons total ${total} bytes`);
 });

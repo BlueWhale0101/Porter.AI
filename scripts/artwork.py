@@ -32,7 +32,7 @@ for path in sorted(source.glob('*/*')):
         image.load()
         if path.parent.name == 'event-illustrations':
             icon = image.copy()
-            icon.thumbnail((96, 96), Image.Resampling.LANCZOS)
+            icon.thumbnail((144, 144), Image.Resampling.LANCZOS)
             icon_path = delivery / 'event-icons' / (path.stem + '.webp')
             icon_path.parent.mkdir(parents=True, exist_ok=True)
             icon.save(icon_path, 'WEBP', quality=78, method=6)

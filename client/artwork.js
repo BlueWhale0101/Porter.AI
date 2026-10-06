@@ -52,7 +52,7 @@ export function artMarkup(asset, className='illustration') {
 // Deliberately separate from the larger resolver: no title, structural or URL fallback.
 export function eventIconMarkup(event){
   const src=eventIconPath(eventVisualRole(event));
-  return src?`<span class="event-icon" aria-hidden="true"><img src="${src}" alt="" width="40" height="40" decoding="async" loading="lazy" fetchpriority="low"></span>`:'';
+  return src?`<span class="event-icon" aria-hidden="true"><img src="${src}" alt="" width="68" height="68" decoding="async" loading="lazy" fetchpriority="low"></span>`:'';
 }
 export function systemMarkup(state) {
   const [title,copy]=systemCopy[state]??systemCopy['no-active-trip'];

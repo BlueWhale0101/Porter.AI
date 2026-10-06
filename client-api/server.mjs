@@ -10,14 +10,14 @@ export const clientMutations={
   createKnowledge:(service,args)=>service.createKnowledge(args.tripId,args.knowledge),
   clearCurrentParking:(service,args)=>service.clearCurrentParking(args.tripId,args),
   setCurrentParking:(service,args)=>service.setCurrentParking(args.tripId,args.knowledge),
-  createEvent:(service,args)=>service.createEvent(args.tripId,args.event),
+  createEvent:(service,args,mutation)=>service.createEvent(args.tripId,args.event,mutation?.id),
   updateEvent:(service,args)=>service.updateEvent(args.eventId,args.patch,args.expectedRevision),
   updateKnowledge:(service,args)=>service.updateKnowledge(args.knowledgeId,args.patch,args.expectedRevision)
 };
 export async function dispatchClientMutation(service,mutation){
   const operation=clientMutations[mutation?.operation];
   if(!operation){const error=new TypeError('Unsupported client semantic mutation');error.code='invalid_semantic_input';throw error;}
-  return operation(service,mutation.arguments??{});
+  return operation(service,mutation.arguments??{},mutation);
 }
 export async function handleClientMutation(request,runtimeForRequest=token=>createAuthenticatedPorterRuntime(token)){
   const runtime=await runtimeForRequest(bearerToken(request.authorization));
