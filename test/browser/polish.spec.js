@@ -48,6 +48,22 @@ test('failed durable transaction keeps editor open and never displays Saved',asy
   await page.evaluate(()=>{const original=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value,...args){if(this.name==='mutations'&&value.localEvent)throw new DOMException('Simulated quota failure','QuotaExceededError');return original.call(this,value,...args);};});
   await page.locator('[data-save-event]').tap();await expect(page.locator('#edit-message')).toContainText('quota');await expect(page.locator('#quick-dialog')).toBeVisible();await expect(page.locator('#event-confirmation')).toBeHidden();expect(await queued(page)).toEqual([]);
 });
+test('an interaction acquired during local overlay read retains the displayed dialog',async({page})=>{
+  await page.evaluate(()=>{
+    const original=IDBObjectStore.prototype.getAll;let reads=0;
+    IDBObjectStore.prototype.getAll=function(...args){
+      const request=original.apply(this,args);
+      if(this.name==='mutations'&&++reads===2){
+        let callback;Object.defineProperty(request,'onsuccess',{configurable:true,set:fn=>callback=fn});
+        request.addEventListener('success',()=>{window.releaseOverlayRead=()=>callback.call(request,{target:request});});
+      }
+      return request;
+    };
+  });
+  await page.locator('.tabs [data-surface=itinerary]').tap();await expect.poll(()=>page.evaluate(()=>typeof window.releaseOverlayRead)).toBe('function');
+  await page.locator('#quick').tap();await page.evaluate(()=>window.releaseOverlayRead());await expect(page.locator('#quick-dialog')).toBeVisible();
+  await page.locator('#quick-dialog #close').tap();await expect(page.locator('#app')).toHaveAttribute('data-surface','itinerary');
+});
 test('uncached Trip selection explains hydration and failure; cached selection has no loader',async({page,request})=>{
   const fresh=await(await request.post('/__test/empty')).json();await page.locator('#library').tap();await expect(page.locator(`[data-trip="${fresh.tripId}"]`)).toBeVisible();await request.post('/__test/hold');await page.locator(`[data-trip="${fresh.tripId}"]`).tap();
   await expect(page.locator('.preparing-trip h1')).toHaveText('Preparing trip…');await expect(page.locator('.preparing-trip')).toContainText('Loading trip');
