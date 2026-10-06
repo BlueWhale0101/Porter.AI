@@ -1,5 +1,5 @@
 [Unit]
-Description=Porter private MCP endpoint (optional)
+Description=Porter private MCP endpoint
 After=network-online.target
 Wants=network-online.target
 
@@ -12,6 +12,7 @@ Environment=NODE_ENV=production
 Environment=PORTER_MCP_HOST=127.0.0.1
 Environment=PORTER_MCP_PORT=8791
 EnvironmentFile=/etc/porter/runtime.env
+EnvironmentFile=/etc/porter/mcp.env
 ExecStart=/usr/bin/node mcp/server.mjs
 Restart=on-failure
 RestartSec=5
