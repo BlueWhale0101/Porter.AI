@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createUpdateController } from '../client/updates.js';
 import { InteractionController } from '../client/interaction.js';
 
-for(const kind of ['door','details','quick','edit','trip-edit','sign-in'])test(`worker update waits for explicit consent and ${kind} ownership`,async()=>{
+for(const kind of ['door','details','quick','edit','trip-edit','sign-in','conflict'])test(`worker update waits for explicit consent and ${kind} ownership`,async()=>{
   const interactions=new InteractionController();let activated=0,reloads=0;
   const update=createUpdateController({interactions,activate:async()=>{activated++;return {accepted:true};},reload:()=>reloads++});
   const owner=interactions.begin(kind);update.ready();await update.safe();assert.equal(activated,0);

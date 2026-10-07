@@ -1,8 +1,21 @@
+import { mutationDiagnostics } from './conflicts.js';
+import { withPendingEvents } from './planning.js';
+import { parkingProjection,matchesParking } from '../src/parking.js';
 export async function diagnosticsSnapshot({store,packet,activeRun,trace,revision,online,sw,swError,lastError,update}) {
   const active=await store.getActiveSelection(),tripId=packet?.trip?.id??active?.tripId??null,perspective=packet?.perspectiveParticipantId??active?.perspectiveParticipantId??null;
   const cached=tripId?await store.getPacket(tripId,perspective):null;
   const artifacts=tripId?await store.getArtifacts(tripId):[],queue=(await store.pending()).filter(x=>x.arguments?.tripId===tripId);
-  return {revision,tripId,perspective,packetRevision:packet?.revision??null,generatedAt:packet?.generatedAt??null,lastSuccessfulSync:cached?.meta?.lastSync??null,usefulLocalDataAtLaunch:Boolean(activeRun?.local?.meta?.usable),localPacketUsable:Boolean(cached?.meta?.usable),requiredArtifacts:(packet?.artifactManifest??[]).filter(x=>x.offlineRequired).map(x=>({eventId:x.eventId,artifactId:x.id,present:artifacts.some(a=>a.eventId===x.eventId&&a.artifactId===x.id&&a.state==='verified'&&(!x.version||a.version===x.version)&&(!x.checksum||a.checksum===x.checksum))})),pendingMutations:queue.length,conflicts:queue.filter(x=>x.state==='conflict').length,online,serviceWorker:sw,update:update??null,serviceWorkerError:swError??null,lastRequestError:lastError??null,performance:trace?.json()??null};
+  const records=await store.allMutations(),projected=packet?withPendingEvents(packet,records):null;
+  const aliases=new Map(records.filter(m=>m.operation==='createEvent').map(m=>[`pending:${m.id}`,m.result?.id??`pending:${m.id}`]));
+  const projectedEventIds=new Set(queue.filter(m=>{
+    const target=m.operation==='createEvent'?m.result?.id??`pending:${m.id}`:aliases.get(m.arguments?.eventId)??m.arguments?.eventId;
+    return ['createEvent','updateEvent'].includes(m.operation)&&Boolean(projected?.events?.[target]);
+  }).map(m=>m.id));
+  const parking=packet?parkingProjection(packet,queue):[];
+  const projectedParkingIds=new Set(parking.filter(k=>k.pending).map(k=>k.id.slice(8)));
+  if(packet)queue.forEach((m,i)=>{if(m.operation==='clearCurrentParking'&&parkingProjection(packet,queue.slice(0,i)).some(k=>matchesParking(k,m.arguments))&&!queue.slice(i+1).some(x=>x.operation==='setCurrentParking'))projectedParkingIds.add(m.id);});
+  const mutations=records.filter(m=>m.state!=='acknowledged').map(m=>mutationDiagnostics(m,{packet:m.arguments?.tripId===tripId?packet:null,projectedEventIds,projectedParkingIds}));
+  return {revision,tripId,perspective,packetRevision:packet?.revision??null,generatedAt:packet?.generatedAt??null,lastSuccessfulSync:cached?.meta?.lastSync??null,usefulLocalDataAtLaunch:Boolean(activeRun?.local?.meta?.usable),localPacketUsable:Boolean(cached?.meta?.usable),requiredArtifacts:(packet?.artifactManifest??[]).filter(x=>x.offlineRequired).map(x=>({eventId:x.eventId,artifactId:x.id,present:artifacts.some(a=>a.eventId===x.eventId&&a.artifactId===x.id&&a.state==='verified'&&(!x.version||a.version===x.version)&&(!x.checksum||a.checksum===x.checksum))})),mutations,pendingMutations:queue.length,conflicts:queue.filter(x=>x.state==='conflict').length,online,serviceWorker:sw,update:update??null,serviceWorkerError:swError??null,lastRequestError:lastError??null,performance:trace?.json()??null};
 }
 export function installDiagnostics(snapshot) {
   const panel=document.createElement('details');panel.id='porter-diagnostics';panel.innerHTML='<summary>Porter diagnostics</summary><button data-refresh>Refresh diagnostics</button><button data-copy>Copy diagnostics</button><pre></pre>';document.body.append(panel);

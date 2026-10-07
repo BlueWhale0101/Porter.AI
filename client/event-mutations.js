@@ -1,5 +1,6 @@
 import { validateTemporal } from '../src/temporal.js';
 import { validateEventVisual } from '../src/event-visual.js';
+import { mutationFailure } from './conflicts.js';
 export const UNDO_MS=10000;
 const target=m=>m.operation==='createEvent'?`pending:${m.id}`:m.arguments?.eventId;
 const nextSequence=rows=>Math.max(0,...rows.map(x=>x.sequence??0))+1;
@@ -18,7 +19,7 @@ export async function recordEvent(store,mutation,before=null,now=Date.now()){
     const prior=before?.pendingMutationId?rows.find(x=>x.id===before.pendingMutationId):null;
     if(prior&&prior.state!=='acknowledged')prior.localEvent=true;
     const inverse=mutation.operation==='updateEvent'?Object.fromEntries(Object.keys(mutation.arguments.patch).map(key=>[key,structuredClone(before?.[key]??null)])):null;
-    const value={...structuredClone(mutation),id:crypto.randomUUID(),localEvent:true,sequence:nextSequence(rows),undoUntil:now+UNDO_MS,inverse,dependsOn:prior?.id??null};
+    const value={...structuredClone(mutation),id:crypto.randomUUID(),localEvent:true,createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString(),sequence:nextSequence(rows),undoUntil:now+UNDO_MS,inverse,dependsOn:prior?.id??null};
     rows.push(value);return value;
   });
 }
@@ -33,23 +34,23 @@ export async function undoEvent(store,id,now=Date.now()){
     original.undone=true;
     // Porter has no delete primitive. A committed create is cancelled using the
     // existing commitment, with optimistic concurrency against its own result.
-    const mutation={id:crypto.randomUUID(),localEvent:true,sequence:nextSequence(rows),operation:'updateEvent',dependsOn:id,undoUntil:0,
+    const mutation={id:crypto.randomUUID(),localEvent:true,createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString(),sequence:nextSequence(rows),operation:'updateEvent',dependsOn:id,undoUntil:0,
       arguments:{tripId:original.arguments.tripId,eventId:original.result?.id??target(original),patch:original.operation==='createEvent'?{commitment:'cancelled'}:original.inverse}};
     rows.push(mutation);return mutation;
   });
 }
 export async function replayEvent(store,api,id){
   const claimed=await store.changeQueue(rows=>{
-    const item=rows.find(x=>x.id===id);if(!item||item.state==='acknowledged')return null;
+    const item=rows.find(x=>x.id===id);if(!item||['acknowledged','conflict'].includes(item.state))return null;
     if(item.dependsOn){const parent=rows.find(x=>x.id===item.dependsOn);if(!parent?.result)throw new Error('Waiting for preceding Event edit');item.arguments.eventId=parent.result.id;item.arguments.expectedRevision=parent.result.revision;}
-    item.attempted=true;item.state='sending';return structuredClone(item);
+    item.attempted=true;item.state='sending';item.updatedAt=new Date().toISOString();return structuredClone(item);
   });
   if(!claimed)return;
   try{
     const result=await api.mutate(claimed);
-    await store.changeQueue(rows=>{const item=rows.find(x=>x.id===id);if(item){item.state='acknowledged';item.result=result;delete item.error;}});
+    await store.changeQueue(rows=>{const item=rows.find(x=>x.id===id);if(item){item.state='acknowledged';item.result=result;item.updatedAt=new Date().toISOString();delete item.error;delete item.errorCode;delete item.currentRevision;}});
   }catch(error){
-    await store.changeQueue(rows=>{const item=rows.find(x=>x.id===id);if(item){item.state=error.code==='revision_conflict'?'conflict':'pending';item.error=error.message;}});throw error;
+    await store.changeQueue(rows=>{const item=rows.find(x=>x.id===id);if(item){item.state=error.code==='revision_conflict'?'conflict':'pending';item.error=error.message;Object.assign(item,mutationFailure(error));}});throw error;
   }
 }
 export async function retireEventReceipts(store,packet,now=Date.now()){
