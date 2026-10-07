@@ -82,6 +82,10 @@ host.post('/__test/visuals',async(_req,res)=>{
 });
 host.get('/__test/parking',async(_req,res)=>res.json({knowledge:await service.listKnowledge(trip.id),current:(await service.tripContext(trip.id)).current.parkingKnowledge}));
 host.get('/__test/events',async(req,res)=>res.json(await service.listEvents(req.query.tripId??trip.id)));
+host.post('/__test/conflict-update',async(req,res)=>{
+ const current=await service.getEvent(event.id);
+ res.json(await service.updateEvent(current.id,{title:req.body?.title??'Authoritative server Event',description:'Server-only information must survive recovery'},current.revision));
+});
 host.post('/__test/editor',async(_req,res)=>{
   const target=await service.createTrip({title:'Editor regression',lifecycle:'active'});
   for(const [title,start,end,zone] of [['London stay','2026-10-01','2026-10-06','Europe/London'],['Rome stay','2026-10-06','2026-10-15','Europe/Rome']])await service.createEvent(target.id,{title,accommodation:true,temporal:{start:start+'T12:00:00Z',end:end+'T10:00:00Z',startTimezone:zone,endTimezone:zone}});

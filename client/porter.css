@@ -81,3 +81,7 @@ button,a,input,select,textarea,summary,[role="button"]{touch-action:manipulation
 .trip-danger p{line-height:1.5}.trip-danger .destructive{border:2px solid #a24d3e;color:#74392f;background:#f7e9dd}
 .trip-danger #confirm-delete,.trip-danger #confirm-event-delete{display:block;margin-top:1rem;background:#843e32;color:#fff8e9}
 .trip-danger [hidden],#trip-form[hidden],#event-form[hidden]{display:none}
+/* Conflict recovery is utility UI; no network or decorative art needed. */
+.conflict-banner{margin:1rem 0;padding:1rem;border:1px dashed var(--terracotta,#9b533d);border-radius:8px;background:var(--cream,#f7efdf)}
+.conflict-banner p{margin:.4rem 0}.conflict-banner button{margin:.3rem .5rem .3rem 0}
+[data-recovery-review]:not(:empty){border-top:1px solid currentColor;margin-top:1rem;padding-top:.7rem}
