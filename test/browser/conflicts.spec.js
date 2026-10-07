@@ -15,7 +15,7 @@ async function conflict(page,request){
  await request.post('/__test/mutation-hold');await page.locator(`[data-event="${eventId}"]`).first().tap();await page.locator('#details #edit').tap();
  await page.locator('[name=title]').fill('Unsynchronized local title');await page.locator('[data-save-event]').tap();await expect(page.locator('#details')).not.toBeVisible();
  await expect.poll(async()=>(await(await request.get('/__test/mutation-state')).json()).waiting).toBe(1);
- await request.post('/__test/conflict-update');await request.post('/__test/mutation-release');await expect(page.locator('[data-resolve-conflict]')).toBeVisible();
+ expect((await request.post('/__test/conflict-update')).ok()).toBe(true);await request.post('/__test/mutation-release');await expect(page.locator('[data-resolve-conflict]')).toBeVisible();
  await expect(page.locator(`[data-event="${eventId}"] strong`)).toHaveText('Unsynchronized local title');
 }
 test('stale edit survives controlled reload; safe diagnostics, cancelled discard and durable discard accept server',async({page,request})=>{

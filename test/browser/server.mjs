@@ -84,7 +84,7 @@ host.get('/__test/parking',async(_req,res)=>res.json({knowledge:await service.li
 host.get('/__test/events',async(req,res)=>res.json(await service.listEvents(req.query.tripId??trip.id)));
 host.post('/__test/conflict-update',async(req,res)=>{
  const current=await service.getEvent(event.id);
- res.json(await service.updateEvent(current.id,{title:req.body.title??'Authoritative server Event',description:'Server-only information must survive recovery'},current.revision));
+ res.json(await service.updateEvent(current.id,{title:req.body?.title??'Authoritative server Event',description:'Server-only information must survive recovery'},current.revision));
 });
 host.post('/__test/editor',async(_req,res)=>{
   const target=await service.createTrip({title:'Editor regression',lifecycle:'active'});
