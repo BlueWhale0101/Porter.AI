@@ -19,7 +19,8 @@ export function conflictGroup(rows,id){
   const ids=new Set([id]);let changed=true;
   while(changed){changed=false;for(const row of rows)if(row.dependsOn&&ids.has(row.dependsOn)&&!ids.has(row.id)){ids.add(row.id);changed=true;}}
   if(rows.some(x=>ids.has(x.id)&&x.state==='acknowledged'))throw new Error('A dependent edit has synchronized. Close and synchronize before recovery.');
-  return rows.filter(x=>ids.has(x.id));
+  // IndexedDB getAll is primary-key ordered; UI snapshots are sequence ordered.
+  return rows.filter(x=>ids.has(x.id)).sort((a,b)=>(a.sequence??0)-(b.sequence??0)||a.id.localeCompare(b.id));
 }
 export const conflictFingerprint=rows=>JSON.stringify(rows);
 export async function discardConflict(store,id,expected){

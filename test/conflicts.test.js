@@ -30,6 +30,7 @@ test('deliberate discard atomically removes conflict and dependent projections; 
  const x=await setup(),local=withPendingEvents(x.packet,await x.store.allMutations()).events[x.event.id];
  const child=await recordEvent(x.store,{operation:'updateEvent',arguments:{tripId:x.trip.id,eventId:local.id,expectedRevision:local.revision,patch:{title:'Second local edit'}}},local);
  const group=conflictGroup(await x.store.allMutations(),x.record.id);assert.equal(group.length,2);
+ assert.equal(conflictFingerprint(conflictGroup((await x.store.allMutations()).reverse(),x.record.id)),conflictFingerprint(group));
  await discardConflict(x.store,x.record.id,conflictFingerprint(group));const restored=new MemoryStore({mutations:await x.store.allMutations()});
  assert.equal((await restored.pending()).length,0);assert.equal(withPendingEvents(x.packet,await restored.allMutations()).events[x.event.id].title,'Current server title');assert.equal((await snapshot(restored,x.packet)).conflicts,0);assert.ok(!(await restored.allMutations()).some(m=>m.id===child.id));
  await replayQueue(restored,x.api);assert.equal((await x.service.getEvent(x.event.id)).revision,2);
