@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { MemoryStore,replayQueue } from '../client/core.js';
 import { recordEvent } from '../client/event-mutations.js';
 import { withPendingEvents } from '../client/planning.js';
-import { diagnosticsSnapshot } from '../client/diagnostics.js';
+import { diagnosticsSnapshot,installDiagnostics } from '../client/diagnostics.js';
 import { conflictGroup,conflictFingerprint,discardConflict,retryConflict } from '../client/conflicts.js';
 import { PersistentPorterService } from '../src/persistent-service.js';
 import { dispatchClientMutation } from '../client-api/server.mjs';
@@ -57,4 +57,15 @@ test('legacy conflicts have safe unknown timestamps and cross-Trip diagnostics w
  const x=await setup();await x.store.enqueue({id:'legacy',operation:'updateKnowledge',state:'conflict',error:'SECRET',arguments:{tripId:'another-trip',knowledgeId:'knowledge',expectedRevision:3,patch:{content:'PRIVATE'}}});
  await x.store.changeQueue(rows=>{const m=rows.find(x=>x.id==='legacy');delete m.createdAt;delete m.updatedAt;});const data=await snapshot(x.store,x.packet),legacy=data.mutations.find(m=>m.id==='legacy');
  assert.equal(legacy.createdAt,null);assert.equal(legacy.knowledgeId,'knowledge');assert.equal(legacy.projected,false);assert.equal(data.conflicts,1);assert.equal(data.mutations.length,2);assert.ok(!JSON.stringify(data).includes('SECRET'));assert.ok(!JSON.stringify(data).includes('PRIVATE'));
+});
+test('diagnostics refresh signals completion, ignores older results and Copy awaits its own safe snapshot',async t=>{
+ const descriptors={document:Object.getOwnPropertyDescriptor(globalThis,'document'),navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator')};
+ t.after(()=>{for(const [key,value] of Object.entries(descriptors))if(value)Object.defineProperty(globalThis,key,value);else delete globalThis[key];});
+ const pre={textContent:''},refresh={},copy={},panel={dataset:{},querySelector:s=>s==='pre'?pre:s==='[data-refresh]'?refresh:copy,addEventListener:()=>{}};
+ Object.defineProperty(globalThis,'document',{configurable:true,value:{createElement:()=>panel,body:{append:()=>{}}}});let copied;
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{clipboard:{writeText:async value=>copied=value}}});
+ const replies=[];installDiagnostics(()=>new Promise((resolve,reject)=>replies.push({resolve,reject})));
+ const older=refresh.onclick(),newer=refresh.onclick();assert.equal(panel.dataset.state,'loading');replies[1].resolve({conflicts:0});await newer;assert.equal(panel.dataset.state,'ready');replies[0].resolve({conflicts:1});await older;assert.equal(JSON.parse(pre.textContent).conflicts,0);
+ const copying=copy.onclick();assert.equal(copied,undefined);replies[2].resolve({conflicts:2});await copying;assert.equal(JSON.parse(copied).conflicts,2);
+ const failed=refresh.onclick();replies[3].reject(new Error('SECRET'));await failed;assert.equal(panel.dataset.state,'error');assert.ok(!pre.textContent.includes('SECRET'));
 });
