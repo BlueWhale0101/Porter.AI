@@ -1,6 +1,10 @@
 // Test process only: real production HTTP/static boundary + PersistentPorterService,
 // with an isolated repository/auth/storage seam. Never imported by the app/build.
 import express from 'express';
+import QRCode from 'qrcode';
+import { createPorterMcpServer } from '../../mcp/server.mjs';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { EVENT_VISUAL_ROLES } from '../../src/event-visual.js';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -34,6 +38,15 @@ async function reset(){
 }
 await reset();
 const host=express();host.use(express.json());
+host.post('/__test/ingest',async(_req,res)=>{
+ const blobs=new Map();service.artifactStorage={bucket:'porter-artifacts',async put({tripId,eventId,artifactId,data}){const key=`${tripId}/${eventId}/${artifactId}/original`;if(blobs.has(key))throw Error('exists');blobs.set(key,Buffer.from(data));return {provider:'supabase-storage',bucket:this.bucket,key};},async get(ref){return new Blob([blobs.get(ref.key)]);},async delete(ref){blobs.delete(ref.key);}};
+ const target=await service.createTrip({title:'Disposable original-image tickets',participants:[{id:'wes',name:'Wes'},{id:'skye',name:'Skye'},{id:'tor',name:'Tor'}],lifecycle:'active'});
+ let ticket=await service.createEvent(target.id,{title:'Synthetic Candide admission — INVALID',temporal:{start:'2030-12-10T19:00:00Z',startTimezone:'UTC'},booking:{expectedAdmissions:['wes','skye','tor'].map(id=>({id:'seat-'+id,participantId:id}))}});
+ const mcp=createPorterMcpServer(service),client=new Client({name:'production-ingestion-regression',version:'1'}),[a,b]=InMemoryTransport.createLinkedPair();await mcp.connect(a);await client.connect(b);const hashes=[];
+ try{for(const id of ['wes','skye','tor']){ticket=await service.attachArtifactMetadata(ticket.id,{id:'qr-'+id,role:'ticket',mediaType:'image/png',version:'external',offlineRequired:true,participantIds:[id],satisfiesAdmissionIds:['seat-'+id],storageRef:{provider:'external-url',url:'https://tickets.invalid/'+id}},ticket.revision);const bytes=await QRCode.toBuffer('INVALID SYNTHETIC ADMISSION '+id);hashes.push(createHash('sha256').update(bytes).digest('hex'));const result=await client.callTool({name:'store_artifact',arguments:{eventId:ticket.id,artifact:{id:'qr-'+id},expectedRevision:ticket.revision,staticArtifact:true,source:{base64:bytes.toString('base64'),mediaType:'image/png'}}});if(result.isError)throw Error(result.content[0].text);ticket=JSON.parse(result.content[0].text);}}
+ finally{await client.close();await mcp.close();}
+ res.json({tripId:target.id,eventId:ticket.id,hashes,artifacts:ticket.artifacts});
+});
 let deleteFailure=false;
 host.use('/client/trips',(_req,res,next)=>{if(_req.method==='DELETE'&&deleteFailure)return res.status(503).json({code:'backend_error',message:'Deletion service unavailable'});next();});
 host.post('/__test/delete-failure',(req,res)=>{deleteFailure=Boolean(req.body.fail);res.json({ok:true});});
@@ -93,6 +106,6 @@ host.use('/client',(req,_res,next)=>{
 host.use(createProductionApp({config,dist:resolve('dist'),build:JSON.parse(readFileSync('dist/build.json','utf8')),
   logger:()=>{},runtimeForToken:async token=>{
     if(token!=='browser-regression')throw new AuthenticationError('Test authentication required');
-    return {service,storage:{get:async()=>new Blob([original])}};
+    return {service,storage:{get:async ref=>ref.provider==='supabase-storage'?service.artifactStorage.get(ref):new Blob([original])}};
   }}));
 host.listen(4178,'127.0.0.1');
