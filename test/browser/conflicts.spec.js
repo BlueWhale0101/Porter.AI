@@ -9,7 +9,7 @@ test.beforeEach(async({page,context,request})=>{
 const serverEvent=async request=>(await(await request.get('/__test/events')).json()).find(e=>e.id===eventId);
 async function diagnostic(page){
  const panel=page.locator('#porter-diagnostics');if(!await panel.evaluate(e=>e.open))await panel.locator('summary').tap();
- await panel.locator('[data-refresh]').tap();await expect(panel.locator('pre')).toContainText('mutations');return JSON.parse(await panel.locator('pre').innerText());
+ await panel.locator('[data-refresh]').tap();await expect(panel).toHaveAttribute('data-state','ready');await expect(panel.locator('pre')).toContainText('mutations');return JSON.parse(await panel.locator('pre').innerText());
 }
 async function conflict(page,request){
  await request.post('/__test/mutation-hold');await page.locator(`[data-event="${eventId}"]`).first().tap();await page.locator('#details #edit').tap();

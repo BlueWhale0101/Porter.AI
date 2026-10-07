@@ -64,6 +64,9 @@ for all unacknowledged queue records (counts remain scoped to the displayed Trip
 No full mutation arguments, patches, inverse drafts, API error text, credentials,
 artifact bytes/URLs/codes, ticket content or server-private strings are serialized.
 The revision is last-known local information, not a promise of live server state.
+Refresh explicitly reports loading/completion and rejects superseded refresh
+results, rather than letting an older snapshot replace a newer one. Copy awaits
+its own completed snapshot, not a previously displayed value.
 New mutations/state transitions record timestamps and safe error codes; old
 IndexedDB records remain valid without a schema reset.
 

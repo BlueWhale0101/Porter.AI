@@ -19,10 +19,14 @@ export async function diagnosticsSnapshot({store,packet,activeRun,trace,revision
 }
 export function installDiagnostics(snapshot) {
   const panel=document.createElement('details');panel.id='porter-diagnostics';panel.innerHTML='<summary>Porter diagnostics</summary><button data-refresh>Refresh diagnostics</button><button data-copy>Copy diagnostics</button><pre></pre>';document.body.append(panel);
-  let value;
-  const update=async()=>{value=await snapshot();panel.querySelector('pre').textContent=JSON.stringify(value,null,2);};
+  let generation=0;
+  const update=async()=>{
+    const current=++generation;panel.dataset.state='loading';panel.querySelector('pre').textContent='Refreshing diagnostics…';
+    try{const value=await snapshot();if(current===generation){panel.querySelector('pre').textContent=JSON.stringify(value,null,2);panel.dataset.state='ready';}return value;}
+    catch{if(current===generation){panel.querySelector('pre').textContent='Diagnostics could not be refreshed. Try again.';panel.dataset.state='error';}}
+  };
   panel.querySelector('[data-refresh]').onclick=update;
-  panel.querySelector('[data-copy]').onclick=async()=>{await update();await navigator.clipboard.writeText(JSON.stringify(value,null,2));};
+  panel.querySelector('[data-copy]').onclick=async()=>{const value=await update();if(value)await navigator.clipboard.writeText(JSON.stringify(value,null,2));};
   panel.addEventListener('toggle',()=>{if(panel.open)update();});
 }
 export async function workerIdentity() {
