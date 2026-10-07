@@ -42,7 +42,18 @@ export class PersistentPorterService {
   async getKnowledge(id) { const item=await this.repository.getKnowledge(id); await this.getTrip(item.tripId); return item; }
   async updateKnowledge(id,patch,expectedRevision) { const current=await this.getKnowledge(id); return this.repository.updateKnowledge(revise(current,patch,expectedRevision),expectedRevision); }
   async attachArtifactMetadata(eventId,artifact,expectedRevision) { const event=await this.getEvent(eventId); validateArtifact(artifact); return this.updateEvent(eventId,{artifacts:[...event.artifacts,artifact]},expectedRevision); }
-  async storeArtifact(eventId,{id,filename,data,contentType,role,participantIds=[],satisfiesAdmissionIds=[],offlineRequired,version},expectedRevision) { if(!this.artifactStorage) throw new BackendError('Artifact storage is not configured'); const event=await this.getEvent(eventId); const storageRef=await this.artifactStorage.put({tripId:event.tripId,eventId,artifactId:id,filename,data,contentType}); try { return await this.attachArtifactMetadata(eventId,{id,role,participantIds,satisfiesAdmissionIds,mediaType:contentType,storageRef,offlineRequired,version},expectedRevision); } catch(error) { try { await this.artifactStorage.delete(storageRef); } catch(cleanupError) { error.cleanupError=cleanupError; } throw error; } }
+  async storeArtifact(eventId,{id,filename,data,contentType,role,participantIds=[],satisfiesAdmissionIds=[],offlineRequired,version,sourceUrl,materializeExisting=false},expectedRevision) {
+    if(!this.artifactStorage)throw new BackendError('Artifact storage is not configured');
+    if(!/^[A-Za-z0-9_-]{1,128}$/.test(id??''))throw new TypeError('Artifact ID must be a safe path segment');
+    const event=await this.getEvent(eventId),existing=event.artifacts.find(a=>a.id===id);
+    if(existing&&(!materializeExisting||existing.storageRef.provider==='supabase-storage'))throw new TypeError('Artifact ID already stored; only external metadata may be materialized');
+    const checksum=createHash('sha256').update(data).digest('hex');
+    const metadata={id,role,participantIds,satisfiesAdmissionIds,mediaType:contentType,offlineRequired,version:version??checksum,checksum,...(sourceUrl?{sourceUrl}:{})};
+    validateArtifact({...metadata,storageRef:{provider:'pending-upload'}});
+    const storageRef=await this.artifactStorage.put({tripId:event.tripId,eventId,artifactId:id,filename,data,contentType});
+    try{return await this.updateEvent(eventId,{artifacts:existing?event.artifacts.map(a=>a.id===id?{...a,...metadata,storageRef}:a):[...event.artifacts,{...metadata,storageRef}]},expectedRevision);}
+    catch(error){try{await this.artifactStorage.delete(storageRef);}catch(cleanupError){error.cleanupError=cleanupError;}throw error;}
+  }
   async tripContext(tripId,options) { const trip=await this.getTrip(tripId); const [events,knowledge]=await Promise.all([this.repository.listEvents(tripId),this.repository.listKnowledge(tripId)]); return buildTripPacket({trip,events,knowledge},options); }
   async exportTrip(id,format='text') { return exportTrip(await this.#source(id),format); }
   async exportEvent(id,format='text') { return exportEvent(await this.getEvent(id),format); }

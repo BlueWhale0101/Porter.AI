@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "porter-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Conversational travel planning and trip-state workflows for Porter.AI using its private semantic MCP tools.",
   "author": { "name": "Porter.AI" },
   "repository": "https://github.com/BlueWhale0101/Porter.AI",

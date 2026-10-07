@@ -70,6 +70,23 @@ Notes may be title-light in conversation, but honor the backend's accepted Knowl
 
 Artifact metadata belongs to its Event. `attach_artifact_metadata` records metadata; it does not by itself prove that the artifact bytes are cached on the user's current device. Never claim device-local ticket/offline readiness from MCP metadata alone. Porter's phone UI is authoritative for device-local readiness.
 
+For an authoritative static ticket image or PDF, use `store_artifact` to ingest
+the actual original bytes into Porter. Metadata-only external URLs are not
+offline-capable tickets. Supply one public HTTPS source URL, or the exact
+original base64 bytes with mediaType when the URL requires authenticated access.
+Maximum decoded size is 5 MiB; accepted formats are PNG, JPEG and PDF. Confirm
+`staticArtifact: true` only when the credential is genuinely static. Preserve
+participant/seat/admission mappings and use the existing artifact ID to
+materialize previously attached external metadata; do not create duplicate tickets.
+Read the current Event revision first. Owned originals cannot be overwritten.
+Never reconstruct, redraw, screenshot or regenerate a QR code when authoritative
+original bytes are available. If you cannot obtain those bytes, say so and ask
+for the original; never fabricate base64 or claim success from a source URL alone.
+Only report ingestion after the tool succeeds. Server storage is not device
+readiness: the phone must download, verify and commit it locally during sync.
+Rotating/dynamic credentials remain `external_dynamic` and use the specialist
+app/Wallet instructions; do not freeze a live credential into an offline ticket.
+
 Do not fabricate booking references, ticket codes, storage references, source URLs or participant mappings.
 
 ## Mutations and conflicts
