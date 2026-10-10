@@ -1,6 +1,9 @@
 \set ON_ERROR_STOP on
 begin;
 do $$begin
+ if not exists(select 1 from public.travel_trip_knowledge where knowledge_id='30000000-0000-4000-8000-000000000008' and participant_ids='["skye"]' and validity_windows='[{"end":"2027-01-01T00:00:00Z"}]') then raise exception 'Between-stage context update lost';end if;
+ if exists(select 1 from public.travel_event_knowledge where knowledge_id='30000000-0000-4000-8000-000000000008' and event_id='30000000-0000-4000-8000-000000000007') or not exists(select 1 from public.travel_event_knowledge where knowledge_id='30000000-0000-4000-8000-000000000008' and event_id='30000000-0000-4000-8000-000000000009') then raise exception 'Between-stage reference removal/addition lost';end if;
+ if not exists(select 1 from public.travel_knowledge where id='30000000-0000-4000-8000-000000000008' and revision=3 and content='Updated before contract') then raise exception 'Between-stage source revision changed';end if;
  if not exists(select 1 from public.travel_knowledge where id='30000000-0000-4000-8000-000000000003' and owner_id='33333333-3333-4333-8333-333333333333' and revision=7 and content='814' and tags='["Los Angeles","Stay"]' and sources='[{"url":"https://example.com/original"}]' and created_at='2026-01-01T00:00:00Z' and updated_at='2026-02-01T00:00:00Z') then raise exception 'Migration changed Knowledge source truth';end if;
  if not exists(select 1 from public.travel_trip_knowledge where knowledge_id='30000000-0000-4000-8000-000000000003' and participant_ids='["wes"]' and validity_windows='[{"end":"2026-12-10T00:00:00Z"}]') then raise exception 'Context not backfilled';end if;
  if not exists(select 1 from public.travel_event_knowledge where knowledge_id='30000000-0000-4000-8000-000000000003' and event_id='30000000-0000-4000-8000-000000000002') or (select revision from public.travel_events where id='30000000-0000-4000-8000-000000000002')<>9 then raise exception 'References/revision not preserved';end if;
