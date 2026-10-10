@@ -60,7 +60,11 @@ on Events. No new MCP operations/schema expansion is shipped.
 `travel_trip_knowledge` explicitly retains non-owning Trip context, including
 legacy participant IDs and validity windows. TripPacket fetches the union of this
 Trip's contexts and Event-linked Knowledge, not the global library. Contextual
-participant/validity data is applied within the Trip; unrelated planning records
+participant/validity data is applied within the Trip; a packet-only
+`operationalContext` marker distinguishes explicit contexts from Event-only
+references (old packets without the marker retain their V0 interpretation).
+Linking a global record alone cannot activate parking or inherit another Trip’s
+participant/validity context. Trip copies preserve that distinction; unrelated planning records
 never become parking merely because their tags match. Old packet formats remain
 readable and the narrow client overlay falls back to old reverse references when
 `knowledgeIds` is absent.

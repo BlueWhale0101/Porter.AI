@@ -18,7 +18,7 @@ export function buildTripPacket({ trip, events, knowledge }, { perspectivePartic
   const currentAccommodation = leaves.filter(e => e.accommodation && operational(e) && active(e, at));
   const currentHire = leaves.filter(e => e.hire && operational(e) && active(e, at));
   const relevantKnowledge = knowledge.filter(k => (!perspectiveParticipantId || k.participantIds.length === 0 || k.participantIds.includes(perspectiveParticipantId)) && isValid(k, at));
-  const parking = relevantKnowledge.filter(k => hasTag(k.tags,'parking') && hasTag(k.tags,'current'));
+  const parking = relevantKnowledge.filter(k => k.operationalContext!==false && hasTag(k.tags,'parking') && hasTag(k.tags,'current'));
   return { packetVersion: 1, trip: { ...trip, participants: trip.participants }, perspectiveParticipantId,
     generatedAt: now, revision: packetRevision(trip, events, knowledge),
     eventTree: tree(visible), events: Object.fromEntries(visible.map(e => [e.id, eventDescriptor(e)])),

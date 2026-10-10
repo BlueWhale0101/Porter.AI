@@ -29,8 +29,8 @@ export class SupabasePorterRepository {
     events??=await this.listEvents(tripId);const eventIds=new Set(events.map(e=>e.id));
     const linkedIds=[...new Set(events.flatMap(e=>e.knowledgeIds))];
     const rows=linkedIds.length?await many(this.client.from('travel_knowledge').select('*').in('id',linkedIds)):[];
-    const byId=new Map(rows.map(row=>[row.id,knowledgeFromRow(row)]));
-    for(const context of contexts){const item=knowledgeFromRow(context.travel_knowledge);byId.set(item.id,{...item,participantIds:context.participant_ids,validityWindows:context.validity_windows});}
+    const byId=new Map(rows.map(row=>[row.id,{...knowledgeFromRow(row),participantIds:[],validityWindows:[],operationalContext:false}]));
+    for(const context of contexts){const item=knowledgeFromRow(context.travel_knowledge);byId.set(item.id,{...item,participantIds:context.participant_ids,validityWindows:context.validity_windows,operationalContext:true});}
     return [...byId.values()].map(k=>({...k,tripId,relatedEventIds:k.relatedEventIds.filter(id=>eventIds.has(id))})).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));
   }
   async associateKnowledge(tripId,item){await one(this.client.from('travel_trip_knowledge').upsert({trip_id:tripId,knowledge_id:item.id,participant_ids:item.participantIds,validity_windows:item.validityWindows}).select().single());}

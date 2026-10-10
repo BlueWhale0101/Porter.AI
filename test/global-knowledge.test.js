@@ -107,3 +107,12 @@ test('old packets without Event reference fields retain operational Knowledge th
  const projected=withPendingEvents(cleaned,[{id:'local-title',operation:'updateEvent',arguments:{tripId:trip.id,eventId:event.id,patch:{title:'Local stay'}}}]);
  assert.equal(planningDetails(projected,event.id).knowledge[0].id,knowledge.id);
 });
+
+test('Event-only global references cannot activate parking or inherit foreign participant context, including Trip copies',async()=>{
+ const {service,trip}=await setup(),k=await service.createKnowledge({title:'Parking idea',tags:['parking','current'],participantIds:['unrelated-person'],validityWindows:[{end:'2000-01-01T00:00:00Z'}]});
+ await service.createEvent(trip.id,{title:'Reference',knowledgeIds:[k.id]});
+ for(const selected of [trip,await service.copyTrip(trip.id)]){
+  const packet=await service.tripContext(selected.id,{perspectiveParticipantId:'wes'});assert.deepEqual(packet.current.parkingKnowledge,[]);assert.equal(packet.knowledge[0].id,k.id);assert.equal(packet.knowledge[0].operationalContext,false);
+  await service.clearCurrentParking(selected.id,{knowledgeId:k.id});assert.ok(hasTag((await service.getKnowledge(k.id)).tags,'current'));
+ }
+});
