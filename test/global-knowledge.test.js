@@ -97,3 +97,13 @@ test('ordinary Knowledge patches never write a stale derived relationship list b
  assert.equal('related_event_ids' in payload,false);
  await repo.updateKnowledge({...k,relatedEventIds:[],revision:2},1,{referencesChanged:true});assert.deepEqual(payload.related_event_ids,[]);
 });
+
+test('old packets without Event reference fields retain operational Knowledge through local reprojection',async()=>{
+ const {buildTripPacket}=await import('../src/projection.js'),{withoutDeletedEvents}=await import('../client/deleted-events.js'),{withPendingEvents,planningDetails}=await import('../client/planning.js');
+ const trip=newTrip({title:'Old cached Trip'},'owner'),event={id:'legacy-hotel',tripId:trip.id,title:'Stay',revision:1,participants:[],artifacts:[],accommodation:true,commitment:'confirmed',temporal:{start:'2026-12-01T00:00:00Z',end:'2026-12-10T00:00:00Z'}},knowledge={...newKnowledge({title:'Room',content:'814',relatedEventIds:[event.id]},'owner',trip.id)};
+ const old=buildTripPacket({trip,events:[event],knowledge:[knowledge]},{now:'2026-12-05T12:00:00Z'});
+ assert.equal('knowledgeIds' in old.events[event.id],false);
+ const cleaned=withoutDeletedEvents(old,['already-gone']);assert.equal('knowledgeIds' in cleaned.events[event.id],false);assert.equal(cleaned.current.accommodation[0].knowledge[0].id,knowledge.id);
+ const projected=withPendingEvents(cleaned,[{id:'local-title',operation:'updateEvent',arguments:{tripId:trip.id,eventId:event.id,patch:{title:'Local stay'}}}]);
+ assert.equal(planningDetails(projected,event.id).knowledge[0].id,knowledge.id);
+});
