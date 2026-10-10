@@ -102,7 +102,7 @@ export async function seedAcceptance(service,storage,{today=seedDay()}={}) {
   const existingKnowledge=await service.listKnowledge(trip.id);
   for(const {key,eventKeys,...fields} of data.knowledge){
     const current=one(tagged(existingKnowledge,'sources',key));
-    const patch={...fields,relatedEventIds:eventKeys.map(key=>ids[key]),sources:[marker(key)]};
+    const patch={...fields,relatedEventIds:eventKeys.map(key=>ids[key]).sort(),sources:[marker(key)]};
     if(!current)await service.createKnowledge(trip.id,patch);
     else if(differs(current,patch))await service.updateKnowledge(current.id,patch,current.revision);
   }

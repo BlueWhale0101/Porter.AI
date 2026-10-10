@@ -33,6 +33,7 @@ async function reset(){
       checksum:createHash('sha256').update(original).digest('hex'),code:{format:'qr',value:'NOT-A-VALID-TICKET'}}],
   });
   await service.createKnowledge(trip.id,{title:'Test note',content:'Browser regression only',relatedEventIds:[event.id]});
+  event=await service.getEvent(event.id);
   const project=service.tripContext.bind(service);
   service.tripContext=async(...args)=>{if(held){waiting++;await gate;}return project(...args);};
 }
@@ -46,6 +47,13 @@ host.post('/__test/ingest',async(_req,res)=>{
  try{for(const id of ['wes','skye','tor']){ticket=await service.attachArtifactMetadata(ticket.id,{id:'qr-'+id,role:'ticket',mediaType:'image/png',version:'external',offlineRequired:true,participantIds:[id],satisfiesAdmissionIds:['seat-'+id],storageRef:{provider:'external-url',url:'https://tickets.invalid/'+id}},ticket.revision);const bytes=await QRCode.toBuffer('INVALID SYNTHETIC ADMISSION '+id);hashes.push(createHash('sha256').update(bytes).digest('hex'));const result=await client.callTool({name:'store_artifact',arguments:{eventId:ticket.id,artifact:{id:'qr-'+id},expectedRevision:ticket.revision,staticArtifact:true,source:{base64:bytes.toString('base64'),mediaType:'image/png'}}});if(result.isError)throw Error(result.content[0].text);ticket=JSON.parse(result.content[0].text);}}
  finally{await client.close();await mcp.close();}
  res.json({tripId:target.id,eventId:ticket.id,hashes,artifacts:ticket.artifacts});
+});
+host.post('/__test/knowledge-foundation',async(_req,res)=>{
+ const global=await service.createKnowledge({title:'Global access instructions',content:'Bring photo ID',tags:['Los Angeles'],planning:{bookingRequired:'yes'}});
+ const current=await service.getEvent(event.id);event=await service.updateEvent(event.id,{knowledgeIds:[...current.knowledgeIds,global.id]},current.revision);
+ const parking=await service.setCurrentParking(trip.id,{title:'Current parking',content:'Bay B12',tags:['parking','current']});
+ const copy=await service.copyTrip(trip.id,{title:'Knowledge reference copy'});
+ res.json({tripId:trip.id,eventId:event.id,knowledgeId:global.id,parkingId:parking.id,copyId:copy.id});
 });
 let deleteFailure=false;
 host.use('/client/trips',(_req,res,next)=>{if(_req.method==='DELETE'&&deleteFailure)return res.status(503).json({code:'backend_error',message:'Deletion service unavailable'});next();});

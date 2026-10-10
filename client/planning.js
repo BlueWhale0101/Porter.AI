@@ -119,5 +119,5 @@ export function tripPlanningSummary(packet) {
 export function planningDetails(packet, eventId) {
   const event = packet.events?.[eventId];
   if (!event) return null;
-  return { event, knowledge: (packet.knowledge ?? []).filter(item => item.relatedEventIds?.includes(eventId)), access: (packet.access ?? []).filter(item => item.eventId === eventId) };
+  return { event, knowledge: (packet.knowledge ?? []).filter(item => event.knowledgeIds?event.knowledgeIds.includes(item.id):item.relatedEventIds?.includes(eventId)), access: (packet.access ?? []).filter(item => item.eventId === eventId) };
 }
