@@ -1,3 +1,4 @@
+import { hasTag } from './knowledge.js';
 const asMs = (value) => value ? Date.parse(value) : null;
 const active = (event, now) => { const { start, end } = event.temporal ?? {}; return asMs(start) != null && asMs(end) != null && asMs(start) <= now && now <= asMs(end); };
 const visibleTo = (object, perspective) => !perspective || object.participants.length === 0 || object.participants.includes(perspective);
@@ -17,7 +18,7 @@ export function buildTripPacket({ trip, events, knowledge }, { perspectivePartic
   const currentAccommodation = leaves.filter(e => e.accommodation && operational(e) && active(e, at));
   const currentHire = leaves.filter(e => e.hire && operational(e) && active(e, at));
   const relevantKnowledge = knowledge.filter(k => (!perspectiveParticipantId || k.participantIds.length === 0 || k.participantIds.includes(perspectiveParticipantId)) && isValid(k, at));
-  const parking = relevantKnowledge.filter(k => k.tags.includes('parking') && k.tags.includes('current'));
+  const parking = relevantKnowledge.filter(k => hasTag(k.tags,'parking') && hasTag(k.tags,'current'));
   return { packetVersion: 1, trip: { ...trip, participants: trip.participants }, perspectiveParticipantId,
     generatedAt: now, revision: packetRevision(trip, events, knowledge),
     eventTree: tree(visible), events: Object.fromEntries(visible.map(e => [e.id, eventDescriptor(e)])),
@@ -26,7 +27,7 @@ export function buildTripPacket({ trip, events, knowledge }, { perspectivePartic
     knowledge: relevantKnowledge, access: accessManifest(visible), artifactManifest: visible.flatMap(e => e.artifacts.map(a => ({ eventId:e.id, ...a }))) };
 }
 function tree(events) { const ids=new Set(events.map(e=>e.id)); const children = new Map(); for(const e of events) { const key=ids.has(e.parentEventId) ? e.parentEventId : null; children.set(key,[...(children.get(key)??[]),e.id]); } return Object.fromEntries(children); }
-function eventDescriptor(e) { return { id:e.id, revision:e.revision, title:e.title, description:e.description, parentEventId:e.parentEventId, temporal:e.temporal, spatial:e.spatial, movement:e.movement, accommodation:e.accommodation, hire:e.hire, visual:e.visual, booking:e.booking, participants:e.participants, commitment:e.commitment, provenance:e.provenance }; }
+function eventDescriptor(e) { return { id:e.id, revision:e.revision, title:e.title, description:e.description, parentEventId:e.parentEventId, temporal:e.temporal, spatial:e.spatial, movement:e.movement, accommodation:e.accommodation, hire:e.hire, visual:e.visual, booking:e.booking, participants:e.participants, commitment:e.commitment, provenance:e.provenance, knowledgeIds:e.knowledgeIds??[] }; }
 function accessManifest(events) { return events.flatMap(e => (e.booking?.expectedAdmissions ?? []).map(a => ({ eventId:e.id, participantId:a.participantId, requirementId:a.id, status:a.status ?? 'expected', artifactIds:e.artifacts.filter(x => x.satisfiesAdmissionIds?.includes(a.id)).map(x=>x.id) }))); }
-function currentResource(event, knowledge) { return { eventId:event.id, location:event.spatial?.location ?? null, checkout:event.temporal?.end ?? null, booking:event.booking, knowledge:knowledge.filter(k=>k.relatedEventIds.includes(event.id)) }; }
+function currentResource(event, knowledge) { return { eventId:event.id, location:event.spatial?.location ?? null, checkout:event.temporal?.end ?? null, booking:event.booking, knowledge:knowledge.filter(k=>event.knowledgeIds?event.knowledgeIds.includes(k.id):k.relatedEventIds.includes(event.id)) }; }
 function packetRevision(trip, events, knowledge) { return [trip, ...events, ...knowledge].reduce((hash, x) => ((hash * 31) + x.revision) >>> 0, 17); }

@@ -1,3 +1,4 @@
+import { normalizeTags,validatePlanning,validateEndDate,knowledgeReferences } from './knowledge.js';
 import { randomUUID } from 'node:crypto';
 import { validateTemporal } from './temporal.js';
 import { validateEventVisual } from './event-visual.js';
@@ -16,6 +17,7 @@ export function newTrip(input, ownerId) {
   const timestamp = now();
   return { id: randomUUID(), ownerId, title: input.title.trim(), description: input.description ?? null,
     lifecycle, participants: array(input.participants), presentation: input.presentation ?? {},
+    endDate:input.endDate??null, knowledgePreloadTag:input.knowledgePreloadTag?.trim()??null,
     createdAt: timestamp, updatedAt: timestamp, revision: 1 };
 }
 
@@ -25,7 +27,7 @@ export function newEvent(input, tripId) {
   return { id: randomUUID(), tripId, parentEventId: input.parentEventId ?? null, title: input.title.trim(),
     description: input.description ?? null, participants: array(input.participants), temporal: input.temporal ?? {},
     spatial: input.spatial ?? {}, booking: input.booking ?? {}, artifacts: array(input.artifacts),
-    provenance: array(input.provenance), commitment: input.commitment ?? 'planned', visual: input.visual ?? {},
+    knowledgeIds:knowledgeReferences(input.knowledgeIds), provenance: array(input.provenance), commitment: input.commitment ?? 'planned', visual: input.visual ?? {},
     movement: Boolean(input.movement), accommodation: Boolean(input.accommodation), hire: Boolean(input.hire),
     createdAt: timestamp, updatedAt: timestamp, revision: 1 };
 }
@@ -43,13 +45,13 @@ export function validateArtifactCode(code) {
   if (!new Set(['qr','code128','code39','ean13','upca']).has(String(code.format).toLowerCase())) throw new TypeError('Unsupported artifact code.format');
 }
 
-export function newKnowledge(input, tripId) {
+export function newKnowledge(input, ownerId, tripId=null) {
   validateKnowledge(input);
   const timestamp = now();
-  return { id: randomUUID(), tripId, title: input.title.trim(), content: input.content,
+  return { id: randomUUID(), ownerId, tripId, title: input.title.trim(), content: input.content??'', planning:input.planning??{},
     relatedEventIds: array(input.relatedEventIds), participantIds: array(input.participantIds),
     validityWindows: array(input.validityWindows), locations: array(input.locations), sources: array(input.sources),
-    tags: array(input.tags), createdAt: timestamp, updatedAt: timestamp, revision: 1 };
+    tags: normalizeTags(input.tags), createdAt: timestamp, updatedAt: timestamp, revision: 1 };
 }
 
 export function revise(object, patch, expectedRevision) {
@@ -57,6 +59,7 @@ export function revise(object, patch, expectedRevision) {
   for (const field of Object.keys(patch)) if (IMMUTABLE_FIELDS.has(field)) throw new TypeError(`${field} is immutable`);
   const result = { ...copy(object), ...copy(patch), revision: object.revision + 1, updatedAt: now() };
   validateObject(result);
+  if ('content' in result){result.tags=normalizeTags(result.tags);result.content??='';}
   return result;
 }
 
@@ -66,10 +69,13 @@ export class ConflictError extends Error {
 
 function validateTrip(trip) {
   if (!trip.title?.trim()) throw new TypeError('Trip title is required');
+  validateEndDate(trip.endDate);
+  if(trip.knowledgePreloadTag!=null&&(typeof trip.knowledgePreloadTag!=='string'||!trip.knowledgePreloadTag.trim()||trip.knowledgePreloadTag.length>200))throw new TypeError('knowledgePreloadTag must be a non-empty plain-text tag');
   if (!TRIP_LIFECYCLES.has(trip.lifecycle ?? 'draft')) throw new TypeError('Invalid trip lifecycle');
 }
 function validateEvent(event) {
   validateEventVisual(event.visual);
+  knowledgeReferences(event.knowledgeIds);
   if (!event.title?.trim()) throw new TypeError('Event title is required');
   if (!EVENT_COMMITMENTS.has(event.commitment ?? 'planned')) throw new TypeError('Invalid event commitment');
   const spatial = event.spatial ?? {};
@@ -80,13 +86,15 @@ function validateEvent(event) {
   for (const artifact of event.artifacts ?? []) validateArtifact(artifact);
 }
 function validateKnowledge(knowledge) {
-  if (!knowledge.title?.trim() || knowledge.content == null || String(knowledge.content).trim() === '') throw new TypeError('Knowledge title and content are required');
+  if(typeof knowledge.title!=='string'||!knowledge.title.trim())throw new TypeError('Knowledge title is required');
+  if(knowledge.content!=null&&typeof knowledge.content!=='string')throw new TypeError('Knowledge content must be text');
+  normalizeTags(knowledge.tags);validatePlanning(knowledge.planning);
   validateWindows(knowledge.validityWindows ?? []);
 }
 function validateObject(object) {
-  if ('ownerId' in object) validateTrip(object);
-  else if ('commitment' in object) validateEvent(object);
-  else validateKnowledge(object);
+  if ('commitment' in object) validateEvent(object);
+  else if ('content' in object) validateKnowledge(object);
+  else validateTrip(object);
 }
 function validateWindows(windows) {
   for (const window of windows) {

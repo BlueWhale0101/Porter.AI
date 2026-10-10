@@ -56,7 +56,7 @@ test('optional Events do not become operational Next and cancelled Events do not
 });
 test('updates reject identity and ownership changes and revalidate the whole object', () => {
   const {service,trip}=setup(); const item=event(service,trip,{}); const knowledge=service.createKnowledge(owner,trip.id,{title:'Room',content:'814'});
-  assert.throws(()=>service.updateEvent(owner,item.id,{tripId:'other'},1),/immutable/); assert.throws(()=>service.updateTrip(owner,trip.id,{ownerId:'other'},1),/immutable/); assert.throws(()=>service.updateEvent(owner,item.id,{commitment:'wrong'},1),/Invalid/); assert.throws(()=>service.updateEvent(owner,item.id,{title:' '},1),/required/); assert.throws(()=>service.updateKnowledge(owner,knowledge.id,{content:' '},1),/required/); assert.throws(()=>service.updateTrip(owner,trip.id,{lifecycle:'wrong'},1),/Invalid/);
+  assert.throws(()=>service.updateEvent(owner,item.id,{tripId:'other'},1),/immutable/); assert.throws(()=>service.updateTrip(owner,trip.id,{ownerId:'other'},1),/immutable/); assert.throws(()=>service.updateEvent(owner,item.id,{commitment:'wrong'},1),/Invalid/); assert.throws(()=>service.updateEvent(owner,item.id,{title:' '},1),/required/); assert.equal(service.updateKnowledge(owner,knowledge.id,{content:''},1).content,''); assert.throws(()=>service.updateTrip(owner,trip.id,{lifecycle:'wrong'},1),/Invalid/);
 });
 test('optimistic revisions reject conflicts', () => {
   const {service,trip}=setup(); const changed=service.updateTrip(owner,trip.id,{title:'Changed'},1); assert.equal(changed.revision,2); assert.throws(()=>service.updateTrip(owner,trip.id,{title:'Lost'},1),ConflictError);
