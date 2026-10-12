@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { hasTag,knowledgeQuery,knowledgePage } from './knowledge.js';
+import { hasTag,knowledgeQuery,knowledgePage,ideaMutation } from './knowledge.js';
 import { parkingCaptureId, matchesParking } from './parking.js';
 import { newTrip, newEvent, newKnowledge, revise, validateArtifact } from './domain.js';
 import { buildTripPacket } from './projection.js';
@@ -50,8 +50,20 @@ export class PersistentPorterService {
   async listKnowledge(tripId) { await this.getTrip(tripId); return this.repository.listKnowledge(tripId); }
   async searchKnowledge(input={}) {
     const options=knowledgeQuery(input);
-    if(options.tripId)await this.getTrip(options.tripId);
+    if(options.tripId)return this.tripIdeas(options.tripId,input);
     return knowledgePage(await this.repository.scanGlobalKnowledge(this.ownerId,options),options);
+  }
+  async tripIdeas(tripId,input={}) {
+    const options=knowledgeQuery({...input,tripId});await this.getTrip(tripId);
+    return this.repository.tripIdeas(this.ownerId,tripId,options);
+  }
+  async ideaState(tripId,knowledgeId) {
+    knowledgeQuery({tripId,cursor:knowledgeId});await this.getTrip(tripId);await this.getKnowledge(knowledgeId);
+    return this.repository.ideaState(this.ownerId,tripId,knowledgeId);
+  }
+  async setTripIdea(input) {
+    const mutation=ideaMutation(input);await this.getTrip(mutation.tripId);await this.getKnowledge(mutation.knowledgeId);
+    return this.repository.setTripIdea(this.ownerId,mutation);
   }
   async getKnowledge(id) { const item=await this.repository.getKnowledge(id); if(item.ownerId!==this.ownerId)throw new NotFoundError('Knowledge',id); return item; }
   async updateKnowledge(id,patch,expectedRevision) { const current=await this.getKnowledge(id); if('relatedEventIds' in patch){if(!current.tripId)throw new TypeError('Global Knowledge references are edited on Events');for(const id of patch.relatedEventIds){const event=await this.getEvent(id);if(event.tripId!==current.tripId&&!current.relatedEventIds.includes(id))throw new TypeError('Legacy references must belong to the context Trip');}} return this.repository.updateKnowledge(revise(current,patch,expectedRevision),expectedRevision,{referencesChanged:Object.hasOwn(patch,'relatedEventIds')}); }

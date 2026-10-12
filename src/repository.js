@@ -25,9 +25,22 @@ export class SupabasePorterRepository {
   async updateEvent(event,expected) { return this.writeEvent(event,expected); }
   async insertKnowledge(item) { return knowledgeFromRow(await one(this.client.from('travel_knowledge').insert(knowledgeToRow(item)).select().single())); }
   async scanGlobalKnowledge(ownerId,{cursor,limit}) {
-    let query=this.client.from('travel_knowledge').select('*,travel_trip_knowledge(trip_id)').eq('owner_id',ownerId).order('id').limit(limit+1);
+    let query=this.client.from('travel_knowledge').select('*,travel_trip_knowledge(trip_id),travel_trip_ideas(trip_id,active)').eq('owner_id',ownerId).order('id').limit(limit+1);
     if(cursor)query=query.gt('id',cursor);
-    return (await many(query)).map(row=>({...knowledgeFromRow(row),associatedTripIds:(row.travel_trip_knowledge??[]).map(x=>x.trip_id)}));
+    return (await many(query)).map(row=>({...knowledgeFromRow(row),associatedTripIds:[...new Set([...(row.travel_trip_knowledge??[]).map(x=>x.trip_id),...(row.travel_trip_ideas??[]).filter(x=>x.active).map(x=>x.trip_id)])]}));
+  }
+  async tripIdeas(ownerId,tripId,{cursor,limit,query,tag}) {
+    const data=await this.ideaRpc('porter_trip_ideas',{p_trip:tripId,p_owner:ownerId,p_cursor:cursor,p_limit:limit,p_query:query,p_tag:tag},tripId);
+    return {...data,items:data.items.map(row=>({...knowledgeFromRow(row),associatedTripIds:row.associatedTripIds,ideaAssociation:row.ideaAssociation,operationalContext:row.operationalContext,tripEventIds:row.tripEventIds}))};
+  }
+  async ideaState(ownerId,tripId,knowledgeId) {return this.ideaRpc('porter_trip_idea_state',{p_owner:ownerId,p_trip:tripId,p_knowledge:knowledgeId},knowledgeId);}
+  async setTripIdea(ownerId,{tripId,knowledgeId,active,expectedRevision,mutationId}) {return this.ideaRpc('porter_set_trip_idea',{p_trip:tripId,p_knowledge:knowledgeId,p_active:active,p_expected:expectedRevision,p_mutation:mutationId},knowledgeId,expectedRevision);}
+  async ideaRpc(name,args,id,expected=null) {
+    const {data,error}=await this.client.rpc(name,args);
+    if(error?.code==='P0409')throw new ConflictError(id,expected,'association changed');
+    if(error?.code==='P0404')throw new NotFoundError('Trip or Knowledge',id);
+    if(error?.code==='22023')throw new TypeError(error.message);
+    if(error)throw error;return data;
   }
   async listKnowledge(tripId,events=null) {
     const contexts=await many(this.client.from('travel_trip_knowledge').select('*,travel_knowledge(*)').eq('trip_id',tripId));

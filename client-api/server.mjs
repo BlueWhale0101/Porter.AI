@@ -7,6 +7,7 @@ import { NotFoundError } from '../src/repository.js';
 
 /** The browser boundary deliberately accepts only offline-safe semantic operations. */
 export const clientMutations={
+  setTripIdea:(service,args)=>service.setTripIdea(args),
   createTrip:(service,args)=>service.createTrip(args.trip),
   updateTrip:(service,args)=>service.updateTrip(args.tripId,args.patch,args.expectedRevision),
   createKnowledge:(service,args)=>service.createKnowledge(args.tripId,args.knowledge),
@@ -36,6 +37,8 @@ export function createClientApi(runtimeForRequest=token=>createAuthenticatedPort
   const app=createMcpExpressApp(options);
   app.use((_request,response,next)=>{response.set('Cache-Control','no-store');next();});
   const runtime=async request=>runtimeForRequest(bearerToken(request.headers.authorization));
+  app.get('/client/trips/:id/ideas',async(request,response)=>{try{const query={...request.query};if(query.limit!==undefined){if(typeof query.limit!=='string'||!/^\d+$/.test(query.limit))throw new TypeError('Invalid Ideas limit');query.limit=Number(query.limit);}response.json(await (await runtime(request)).service.tripIdeas(request.params.id,query));}catch(error){publicError(error,response);}});
+  app.get('/client/trips/:id/ideas/:knowledgeId/association',async(request,response)=>{try{response.json(await (await runtime(request)).service.ideaState(request.params.id,request.params.knowledgeId));}catch(error){publicError(error,response);}});
   app.get('/client/knowledge',async(request,response)=>{try{const query={...request.query};if(query.limit!==undefined){if(typeof query.limit!=='string'||!/^\d+$/.test(query.limit))throw new TypeError('Invalid Knowledge limit');query.limit=Number(query.limit);}response.json(await (await runtime(request)).service.searchKnowledge(query));}catch(error){publicError(error,response);}});
   app.get('/client/knowledge/:id',async(request,response)=>{try{response.json(await (await runtime(request)).service.getKnowledge(request.params.id));}catch(error){publicError(error,response);}});
   app.get('/client/events/:id/deletion',async(request,response)=>{try{response.json(await eventDeletionPreview((await runtime(request)).service,request.params.id));}catch(error){publicError(error,response);}});

@@ -15,6 +15,13 @@ export function knowledgeQuery(input={}) {
   if((tripId!==null&&!uuid(tripId))||(cursor!==null&&!uuid(cursor))||!Number.isInteger(limit)||limit<1||limit>100)throw new TypeError('Invalid Knowledge page');
   return {query:tagKey(query),tag:tagKey(tag),tripId,cursor,limit};
 }
+export function ideaMutation(input) {
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['tripId','knowledgeId','active','expectedRevision','mutationId'].includes(k)))throw new TypeError('Invalid Ideas mutation');
+  knowledgeQuery({tripId:input.tripId,cursor:input.knowledgeId});
+  if(!input.tripId||!input.knowledgeId||typeof input.active!=='boolean'||!Number.isInteger(input.expectedRevision)||input.expectedRevision<0||input.expectedRevision>=2147483647)throw new TypeError('Invalid association version or state');
+  knowledgeQuery({cursor:input.mutationId});if(!input.mutationId)throw new TypeError('Mutation ID is required');
+  return input;
+}
 export function knowledgePage(records,options) {
   const scanned=records.slice(0,options.limit);
   const items=scanned.filter(k=>(!options.tripId||k.associatedTripIds.includes(options.tripId))&&(!options.tag||hasTag(k.tags,options.tag))&&(!options.query||[k.title,k.content,...(k.tags??[])].some(v=>tagKey(v??'').includes(options.query))));
