@@ -6,6 +6,20 @@ export function normalizeTags(tags=[]) {
   const seen=new Set();return tags.map(t=>t.trim()).filter(t=>{const key=tagKey(t);if(seen.has(key))return false;seen.add(key);return true;});
 }
 export const hasTag=(tags,tag)=>(tags??[]).some(t=>tagKey(t)===tagKey(tag));
+// A page bounds scanned records, not matching records. Never scan the whole library.
+export function knowledgeQuery(input={}) {
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['query','tag','tripId','cursor','limit'].includes(k)))throw new TypeError('Invalid Knowledge query');
+  const {query='',tag='',tripId=null,cursor=null,limit=50}=input;
+  if(typeof query!=='string'||query.length>500||typeof tag!=='string'||tag.length>200)throw new TypeError('Invalid Knowledge search');
+  const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  if((tripId!==null&&!uuid(tripId))||(cursor!==null&&!uuid(cursor))||!Number.isInteger(limit)||limit<1||limit>100)throw new TypeError('Invalid Knowledge page');
+  return {query:tagKey(query),tag:tagKey(tag),tripId,cursor,limit};
+}
+export function knowledgePage(records,options) {
+  const scanned=records.slice(0,options.limit);
+  const items=scanned.filter(k=>(!options.tripId||k.associatedTripIds.includes(options.tripId))&&(!options.tag||hasTag(k.tags,options.tag))&&(!options.query||[k.title,k.content,...(k.tags??[])].some(v=>tagKey(v??'').includes(options.query))));
+  return {items,nextCursor:records.length>options.limit?scanned.at(-1).id:null,scanned:scanned.length};
+}
 export function validatePlanning(p={}) {
   if(!p||typeof p!=='object'||Array.isArray(p))throw new TypeError('Knowledge planning must be an object');
   if(Object.keys(p).some(k=>!['cost','bookingRequired','timedAvailability','primaryUrl'].includes(k)))throw new TypeError('Unknown Knowledge planning field');

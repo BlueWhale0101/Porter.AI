@@ -24,6 +24,11 @@ export class SupabasePorterRepository {
   async getEvent(id) { return eventFromRow(await one(this.client.from('travel_events').select('*,travel_event_knowledge(knowledge_id)').eq('id',id).maybeSingle(),'Event',id)); }
   async updateEvent(event,expected) { return this.writeEvent(event,expected); }
   async insertKnowledge(item) { return knowledgeFromRow(await one(this.client.from('travel_knowledge').insert(knowledgeToRow(item)).select().single())); }
+  async scanGlobalKnowledge(ownerId,{cursor,limit}) {
+    let query=this.client.from('travel_knowledge').select('*,travel_trip_knowledge(trip_id)').eq('owner_id',ownerId).order('id').limit(limit+1);
+    if(cursor)query=query.gt('id',cursor);
+    return (await many(query)).map(row=>({...knowledgeFromRow(row),associatedTripIds:(row.travel_trip_knowledge??[]).map(x=>x.trip_id)}));
+  }
   async listKnowledge(tripId,events=null) {
     const contexts=await many(this.client.from('travel_trip_knowledge').select('*,travel_knowledge(*)').eq('trip_id',tripId));
     events??=await this.listEvents(tripId);const eventIds=new Set(events.map(e=>e.id));

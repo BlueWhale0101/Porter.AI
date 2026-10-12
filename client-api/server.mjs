@@ -36,6 +36,8 @@ export function createClientApi(runtimeForRequest=token=>createAuthenticatedPort
   const app=createMcpExpressApp(options);
   app.use((_request,response,next)=>{response.set('Cache-Control','no-store');next();});
   const runtime=async request=>runtimeForRequest(bearerToken(request.headers.authorization));
+  app.get('/client/knowledge',async(request,response)=>{try{const query={...request.query};if(query.limit!==undefined){if(typeof query.limit!=='string'||!/^\d+$/.test(query.limit))throw new TypeError('Invalid Knowledge limit');query.limit=Number(query.limit);}response.json(await (await runtime(request)).service.searchKnowledge(query));}catch(error){publicError(error,response);}});
+  app.get('/client/knowledge/:id',async(request,response)=>{try{response.json(await (await runtime(request)).service.getKnowledge(request.params.id));}catch(error){publicError(error,response);}});
   app.get('/client/events/:id/deletion',async(request,response)=>{try{response.json(await eventDeletionPreview((await runtime(request)).service,request.params.id));}catch(error){publicError(error,response);}});
   app.delete('/client/events/:id',async(request,response)=>{try{response.json(await deleteAppEvent((await runtime(request)).service,request.params.id,request.body?.expected));}catch(error){publicError(error,response);}});
   app.get('/client/trips/:id/deletion',async(request,response)=>{try{response.json(await tripDeletionPreview((await runtime(request)).service,request.params.id));}catch(error){publicError(error,response);}});
