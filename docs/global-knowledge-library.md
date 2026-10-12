@@ -21,6 +21,9 @@ selective persistence, replay/conflict UI and Event promotion follow separately.
 
 ## Read API (implemented)
 
+Increment 2 supersedes Trip-scoped scan and association proposals below;
+see `trip-ideas-associations.md`. Global unscoped scan behavior is unchanged.
+
 `GET /client/knowledge?query=&tag=&tripId=&cursor=&limit=50`
 
 - Uses the existing authenticated runtime and user JWT. Repository also applies
