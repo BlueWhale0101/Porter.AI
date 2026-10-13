@@ -18,9 +18,10 @@ import { acceptanceData } from '../../scripts/acceptance-data.mjs';
 
 const owner='11111111-1111-4111-8111-111111111111';
 const original=Buffer.from('PORTER BROWSER REGRESSION — NOT A VALID ADMISSION');
-let service,trip,event,held=false,waiting=0,release,gate,generation=0,apiUnavailable=false,iconsUnavailable=false;
+let service,trip,event,held=false,waiting=0,release,gate,generation=0,apiUnavailable=false,iconsUnavailable=false,knowledgeIdentityOverride=null;
 let mutationHeld=false,mutationWaiting=0,mutationGate=Promise.resolve(),releaseMutation;
 async function reset(){
+  knowledgeIdentityOverride=null;
   release?.();releaseMutation?.();mutationHeld=false;mutationWaiting=0;mutationGate=Promise.resolve();generation=0;apiUnavailable=false;iconsUnavailable=false;held=false;waiting=0;gate=Promise.resolve();
   service=new PersistentPorterService(new MemoryRepository(),owner);
   trip=await service.createTrip({title:'Browser regression Trip',lifecycle:'active'});
@@ -39,6 +40,8 @@ async function reset(){
 }
 await reset();
 const host=express();host.use(express.json());
+host.post('/__test/knowledge-account',(req,res)=>{knowledgeIdentityOverride=req.body.ownerId??null;res.json({ok:true});});
+host.get('/client/identity',(_req,res,next)=>knowledgeIdentityOverride?res.json({ownerId:knowledgeIdentityOverride}):next());
 host.post('/__test/knowledge-ui',async(_req,res)=>{
  const england=await service.createTrip({title:'England',lifecycle:'draft'}),idea=await service.createKnowledge({title:'London pub',content:'A quiet riverside pint',tags:['London','Pubs'],planning:{primaryUrl:'https://example.com/pub'}});
  res.json({tripId:trip.id,englandId:england.id,knowledgeId:idea.id});

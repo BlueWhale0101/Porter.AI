@@ -53,6 +53,7 @@ export async function associateKnowledge(store,ownerId,id,tripId,active,expected
 }
 function adoptSource(row,source,ownerId){
   if(source.ownerId!==ownerId||source.id!==row.knowledgeId||!Number.isInteger(source.revision)||source.revision<1)throw new Error('Invalid owner-scoped Knowledge response');
+  if(row.source&&JSON.stringify(row.source)===JSON.stringify(source))return;
   if(!row.source||source.revision>=row.source.revision){row.source=copy(source);row.generation++;}
 }
 export async function cacheKnowledge(store,ownerId,source,{pin=false}={}){
