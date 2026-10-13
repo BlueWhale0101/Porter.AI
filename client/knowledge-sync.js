@@ -19,7 +19,8 @@ function visible(row,state){
     if(m.operation==='editGlobalKnowledge')value={...value,...m.arguments.patch};
     if(m.operation==='setTripIdea')associations[m.arguments.tripId]={...(associations[m.arguments.tripId]??{}),active:m.arguments.active,pending:true};
   }
-  return {...value,associations,generation:row.generation,pending:state.mutations.some(m=>target(m)===row.knowledgeId&&live(m)),conflicts:state.mutations.filter(m=>target(m)===row.knowledgeId&&m.state==='conflict').map(copy)};
+  const mutations=ordered(state).filter(m=>target(m)===row.knowledgeId&&live(m));
+  return {...value,associations,associatedTripIds:[...new Set([...(row.associatedTripIds??[]),...Object.keys(associations).filter(id=>associations[id].active)])],tripReasons:copy(row.tripReasons??{}),generation:row.generation,pending:mutations.length>0,mutations:copy(mutations),conflicts:mutations.filter(m=>m.state==='conflict').map(copy)};
 }
 export async function localKnowledge(store,ownerId,id){return store.knowledgeTransaction(ownerId,state=>visible(record(state,ownerId,id),state));}
 function queue(state,ownerId,operation,args,dependencies=[]){
@@ -52,6 +53,7 @@ export async function associateKnowledge(store,ownerId,id,tripId,active,expected
 }
 function adoptSource(row,source,ownerId){
   if(source.ownerId!==ownerId||source.id!==row.knowledgeId||!Number.isInteger(source.revision)||source.revision<1)throw new Error('Invalid owner-scoped Knowledge response');
+  if(row.source&&JSON.stringify(row.source)===JSON.stringify(source))return;
   if(!row.source||source.revision>=row.source.revision){row.source=copy(source);row.generation++;}
 }
 export async function cacheKnowledge(store,ownerId,source,{pin=false}={}){
@@ -81,6 +83,7 @@ export async function cacheKnowledgePage(store,ownerId,ticket,page){
       let row=record(state,ownerId,source.id);if(!row){row={id:knowledgeKey(ownerId,source.id),ownerId,knowledgeId:source.id,generation:0,associations:{}};state.knowledge.push(row);}adoptSource(row,source,ownerId);
       if(ideaAssociation&&(!row.associations[ideaAssociation.tripId]||row.associations[ideaAssociation.tripId].revision<=ideaAssociation.revision))row.associations[ideaAssociation.tripId]=copy(ideaAssociation);
       if(query.scope.tripId){row.tripReasons??={};row.tripReasons[query.scope.tripId]={operationalContext:Boolean(operationalContext),tripEventIds:tripEventIds??[]};}
+      if(associatedTripIds)row.associatedTripIds=copy(associatedTripIds);
     }
     Object.assign(query,{ids:page.items.map(x=>x.id),nextCursor:page.nextCursor,complete:query.scope.cursor===null&&page.nextCursor===null&&!state.mutations.some(live),fetchedAt:new Date().toISOString()});return true;
   });
@@ -155,3 +158,15 @@ export async function resolveAssociationConflict(store,ownerId,id,{generation,ch
     return choice==='rebase'?copy(queue(state,ownerId,'setTripIdea',{tripId:m.arguments.tripId,knowledgeId:row.knowledgeId,active,expectedRevision:association.revision})):copy(m);
   });
 }
+export async function knowledgeMutationGroup(store,ownerId,id){return store.knowledgeTransaction(ownerId,state=>{
+  const root=state.mutations.find(x=>x.id===id);if(!root)throw new Error('Saved change no longer exists');const ids=new Set([id]);let changed=true;while(changed){changed=false;for(const x of state.mutations)if(x.dependencies.some(dep=>ids.has(dep))&&!ids.has(x.id)){ids.add(x.id);changed=true;}}
+  return ordered(state).filter(x=>ids.has(x.id)&&live(x)).map(copy);
+});}
+export async function discardKnowledgeGroup(store,ownerId,id,fingerprint){return store.knowledgeTransaction(ownerId,state=>{
+  const root=state.mutations.find(x=>x.id===id);if(!root)throw new Error('Saved change no longer exists');const ids=new Set([id]);let changed=true;while(changed){changed=false;for(const x of state.mutations)if(x.dependencies.some(dep=>ids.has(dep))&&!ids.has(x.id)){ids.add(x.id);changed=true;}}
+  const group=ordered(state).filter(x=>ids.has(x.id)&&live(x));if(JSON.stringify(group)!==fingerprint)throw new Error('Saved changes changed. Review again.');
+  if(group.some(x=>x.state==='acknowledged'||x.attempted&&!['conflict','blocked'].includes(x.state)))throw new Error('A write may already be saved online. Synchronize before discarding.');
+  for(const x of group){x.state='resolved';x.resolution='discard';}
+  const row=record(state,ownerId,target(root));if(row){row.generation++;if(!row.source&&!state.mutations.some(x=>target(x)===row.knowledgeId&&live(x)))state.knowledge=state.knowledge.filter(x=>x.id!==row.id);}
+  return {discarded:group.length};
+});}
