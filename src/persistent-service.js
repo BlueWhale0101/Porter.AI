@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { hasTag,knowledgeQuery,knowledgePage,ideaMutation } from './knowledge.js';
+import { hasTag,knowledgeQuery,knowledgePage,ideaMutation,knowledgeMutation } from './knowledge.js';
 import { parkingCaptureId, matchesParking } from './parking.js';
 import { newTrip, newEvent, newKnowledge, revise, validateArtifact } from './domain.js';
 import { buildTripPacket } from './projection.js';
@@ -37,6 +37,8 @@ export class PersistentPorterService {
     for(const id of input.relatedEventIds??[]){const e=await this.getEvent(id);if(e.tripId!==tripId)throw new TypeError('Legacy references must belong to the context Trip');}
     return this.repository.insertKnowledge(newKnowledge(input,this.ownerId,tripId));
   }
+  async captureGlobalKnowledge(input) {return this.repository.mutateGlobalKnowledge(this.ownerId,knowledgeMutation(input,{create:true}),true);}
+  async editGlobalKnowledge(input) {return this.repository.mutateGlobalKnowledge(this.ownerId,knowledgeMutation(input),false);}
   async setCurrentParking(tripId,input) { await this.getTrip(tripId); const existing=await this.repository.listKnowledge(tripId); const captureId=parkingCaptureId(input); const replay=captureId&&existing.find(x=>x.operationalContext!==false&&parkingCaptureId(x)===captureId); if(replay)return replay; for(const item of existing.filter(x=>x.operationalContext!==false&&hasTag(x.tags,'parking')&&hasTag(x.tags,'current'))) await this.updateKnowledge(item.id,{tags:item.tags.filter(tag=>!hasTag([tag],'current'))},item.revision); return this.createKnowledge(tripId,{...input,tags:[...new Set([...(input.tags??[]),'parking','current'])]}); }
   async clearCurrentParking(tripId,target) {
     await this.getTrip(tripId);

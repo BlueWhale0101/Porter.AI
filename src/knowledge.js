@@ -1,5 +1,20 @@
 // Presentation/planning attributes only: no Knowledge subclasses or lifecycle.
 export const KNOWLEDGE_TRI_STATES = new Set(['yes','no','unknown']);
+export function knowledgeFields(input,{create=false}={}) {
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['title','content','tags','planning'].includes(k)))throw new TypeError('Only title, content, tags and planning are editable');
+  const result=structuredClone(input);
+  if(create||'title' in result){if(typeof result.title!=='string'||!result.title.trim())throw new TypeError('Knowledge title is required');result.title=result.title.trim();}
+  if('content' in result){if(result.content!=null&&typeof result.content!=='string')throw new TypeError('Knowledge content must be text');result.content??='';}
+  if('tags' in result)result.tags=normalizeTags(result.tags);
+  if('planning' in result)validatePlanning(result.planning);
+  return result;
+}
+export function knowledgeMutation(input,{create=false}={}) {
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['knowledgeId','mutationId',create?'knowledge':'patch',...(create?[]:['expectedRevision'])].includes(k)))throw new TypeError('Invalid global Knowledge mutation');
+  for(const key of ['knowledgeId','mutationId']){knowledgeQuery({cursor:input[key]});if(!input[key])throw new TypeError(`${key} is required`);}
+  if(!create&&(!Number.isInteger(input.expectedRevision)||input.expectedRevision<1||input.expectedRevision>=2147483647))throw new TypeError('Knowledge revision is required');
+  return {...input,[create?'knowledge':'patch']:knowledgeFields(input[create?'knowledge':'patch'],{create})};
+}
 export const tagKey = tag => tag.trim().normalize('NFKC').toLowerCase();
 export function normalizeTags(tags=[]) {
   if(!Array.isArray(tags)||tags.some(t=>typeof t!=='string'||!t.trim()||t.length>200))throw new TypeError('Tags must be non-empty strings up to 200 characters');

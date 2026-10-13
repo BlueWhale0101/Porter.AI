@@ -7,6 +7,8 @@ import { NotFoundError } from '../src/repository.js';
 
 /** The browser boundary deliberately accepts only offline-safe semantic operations. */
 export const clientMutations={
+  captureGlobalKnowledge:(service,args)=>service.captureGlobalKnowledge(args),
+  editGlobalKnowledge:(service,args)=>service.editGlobalKnowledge(args),
   setTripIdea:(service,args)=>service.setTripIdea(args),
   createTrip:(service,args)=>service.createTrip(args.trip),
   updateTrip:(service,args)=>service.updateTrip(args.tripId,args.patch,args.expectedRevision),
@@ -18,6 +20,7 @@ export const clientMutations={
   updateKnowledge:(service,args)=>service.updateKnowledge(args.knowledgeId,args.patch,args.expectedRevision)
 };
 export async function dispatchClientMutation(service,mutation){
+  if(mutation?.ownerId&&mutation.ownerId!==service.ownerId)throw new AuthenticationError('Queued Knowledge belongs to a different owner');
   const operation=clientMutations[mutation?.operation];
   if(!operation){const error=new TypeError('Unsupported client semantic mutation');error.code='invalid_semantic_input';throw error;}
   return operation(service,mutation.arguments??{},mutation);
@@ -28,6 +31,7 @@ export async function handleClientMutation(request,runtimeForRequest=token=>crea
 }
 
 function publicError(error,response){
+  if(error instanceof ConflictError)return response.status(409).json({code:'revision_conflict',message:'Revision conflict',expected:error.expected,actual:Number.isInteger(error.actual)?error.actual:null});
   if(error instanceof NotFoundError)return response.status(404).json({code:'not_found',message:'Trip is no longer available'});
   const authentication=error instanceof AuthenticationError,conflict=error instanceof ConflictError,invalid=error instanceof TypeError;
   response.status(authentication?401:conflict?409:invalid?400:503).json({code:authentication?'authentication_failed':conflict?'revision_conflict':invalid?'invalid_semantic_input':'backend_error',message:authentication?'Sign in to synchronize':conflict?'Revision conflict':invalid?error.message:'Porter service is temporarily unavailable'});
@@ -36,7 +40,8 @@ function publicError(error,response){
 export function createClientApi(runtimeForRequest=token=>createAuthenticatedPorterRuntime(token),options={}){
   const app=createMcpExpressApp(options);
   app.use((_request,response,next)=>{response.set('Cache-Control','no-store');next();});
-  const runtime=async request=>runtimeForRequest(bearerToken(request.headers.authorization));
+  const runtime=async request=>{const caller=await runtimeForRequest(bearerToken(request.headers.authorization));if(request.headers['x-porter-owner']&&request.headers['x-porter-owner']!==caller.service.ownerId)throw new AuthenticationError('Owner changed');return caller;};
+  app.get('/client/identity',async(request,response)=>{try{response.json({ownerId:(await runtime(request)).service.ownerId});}catch(error){publicError(error,response);}});
   app.get('/client/trips/:id/ideas',async(request,response)=>{try{const query={...request.query};if(query.limit!==undefined){if(typeof query.limit!=='string'||!/^\d+$/.test(query.limit))throw new TypeError('Invalid Ideas limit');query.limit=Number(query.limit);}response.json(await (await runtime(request)).service.tripIdeas(request.params.id,query));}catch(error){publicError(error,response);}});
   app.get('/client/trips/:id/ideas/:knowledgeId/association',async(request,response)=>{try{response.json(await (await runtime(request)).service.ideaState(request.params.id,request.params.knowledgeId));}catch(error){publicError(error,response);}});
   app.get('/client/knowledge',async(request,response)=>{try{const query={...request.query};if(query.limit!==undefined){if(typeof query.limit!=='string'||!/^\d+$/.test(query.limit))throw new TypeError('Invalid Knowledge limit');query.limit=Number(query.limit);}response.json(await (await runtime(request)).service.searchKnowledge(query));}catch(error){publicError(error,response);}});
