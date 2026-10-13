@@ -100,10 +100,23 @@ button,a,input,select,textarea,summary,[role="button"]{touch-action:manipulation
 .masthead #status{grid-column:1;grid-row:2;min-height:0;padding-top:0;align-self:center}
 .masthead #refresh{grid-column:2;grid-row:2;justify-self:end;align-self:center;white-space:nowrap;min-height:44px}
 
-/* Five Trip tabs stay together; the perspective picker gets its own
-   intentionally compact row instead of wrapping as a stray flex item. */
+/* Keep primary Trip navigation in one horizontally scrollable strip.
+   Perspective is intentionally after the tabs, accessible by swiping. */
 @media(max-width:600px){
-  .tabs:has(#perspective){display:grid;grid-template-columns:repeat(5,minmax(0,1fr));column-gap:0;row-gap:2px}
-  .tabs:has(#perspective)>button{min-width:0;padding:10px 2px;font-size:clamp(.7rem,3.2vw,.86rem)}
-  .tabs:has(#perspective)>#perspective{grid-column:1/-1;justify-self:end;margin:0;max-width:140px;min-height:44px;padding:.35rem .5rem}
+  .tabs:has(#perspective){
+    display:flex;flex-wrap:nowrap;gap:0;overflow-x:auto;overflow-y:hidden;
+    overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .tabs:has(#perspective)::-webkit-scrollbar{display:none}
+  .tabs:has(#perspective)>button{
+    flex:0 0 auto;white-space:nowrap;padding:10px 8px;
+    font-size:clamp(.7rem,3.2vw,.86rem)
+  }
+  .tabs:has(#perspective)>#perspective{
+    flex:0 0 auto;margin:0 0 0 18px;min-width:132px;
+    max-width:none;min-height:44px;padding:.35rem .5rem
+  }
 }
+/* The stamp floats above NEXT with an intentional visible gap. */
+.event.next .stamp{top:-46px}
