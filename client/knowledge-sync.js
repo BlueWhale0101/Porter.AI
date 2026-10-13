@@ -19,7 +19,7 @@ function visible(row,state){
     if(m.operation==='editGlobalKnowledge')value={...value,...m.arguments.patch};
     if(m.operation==='setTripIdea')associations[m.arguments.tripId]={...(associations[m.arguments.tripId]??{}),active:m.arguments.active,pending:true};
   }
-  const mutations=state.mutations.filter(m=>target(m)===row.knowledgeId&&live(m));
+  const mutations=ordered(state).filter(m=>target(m)===row.knowledgeId&&live(m));
   return {...value,associations,associatedTripIds:[...new Set([...(row.associatedTripIds??[]),...Object.keys(associations).filter(id=>associations[id].active)])],tripReasons:copy(row.tripReasons??{}),generation:row.generation,pending:mutations.length>0,mutations:copy(mutations),conflicts:mutations.filter(m=>m.state==='conflict').map(copy)};
 }
 export async function localKnowledge(store,ownerId,id){return store.knowledgeTransaction(ownerId,state=>visible(record(state,ownerId,id),state));}
@@ -160,11 +160,11 @@ export async function resolveAssociationConflict(store,ownerId,id,{generation,ch
 }
 export async function knowledgeMutationGroup(store,ownerId,id){return store.knowledgeTransaction(ownerId,state=>{
   const root=state.mutations.find(x=>x.id===id);if(!root)throw new Error('Saved change no longer exists');const ids=new Set([id]);let changed=true;while(changed){changed=false;for(const x of state.mutations)if(x.dependencies.some(dep=>ids.has(dep))&&!ids.has(x.id)){ids.add(x.id);changed=true;}}
-  return state.mutations.filter(x=>ids.has(x.id)&&live(x)).map(copy);
+  return ordered(state).filter(x=>ids.has(x.id)&&live(x)).map(copy);
 });}
 export async function discardKnowledgeGroup(store,ownerId,id,fingerprint){return store.knowledgeTransaction(ownerId,state=>{
   const root=state.mutations.find(x=>x.id===id);if(!root)throw new Error('Saved change no longer exists');const ids=new Set([id]);let changed=true;while(changed){changed=false;for(const x of state.mutations)if(x.dependencies.some(dep=>ids.has(dep))&&!ids.has(x.id)){ids.add(x.id);changed=true;}}
-  const group=state.mutations.filter(x=>ids.has(x.id)&&live(x));if(JSON.stringify(group)!==fingerprint)throw new Error('Saved changes changed. Review again.');
+  const group=ordered(state).filter(x=>ids.has(x.id)&&live(x));if(JSON.stringify(group)!==fingerprint)throw new Error('Saved changes changed. Review again.');
   if(group.some(x=>x.state==='acknowledged'||x.attempted&&!['conflict','blocked'].includes(x.state)))throw new Error('A write may already be saved online. Synchronize before discarding.');
   for(const x of group){x.state='resolved';x.resolution='discard';}
   const row=record(state,ownerId,target(root));if(row){row.generation++;if(!row.source&&!state.mutations.some(x=>target(x)===row.knowledgeId&&live(x)))state.knowledge=state.knowledge.filter(x=>x.id!==row.id);}

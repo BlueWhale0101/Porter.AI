@@ -18,3 +18,7 @@ test('review/discard preserves dependency fingerprint and refuses ambiguous writ
  await assert.rejects(discardKnowledgeGroup(store,'owner',c.mutationId,'stale'),/changed/);await discardKnowledgeGroup(store,'owner',c.mutationId,JSON.stringify(group));assert.equal(await localKnowledge(store,'owner',k.id),null);
  const another=await captureKnowledge(store,'owner',{title:'Maybe saved'});await store.knowledgeTransaction('owner',s=>{s.mutations.find(m=>m.id===another.mutationId).attempted=true;});group=await knowledgeMutationGroup(store,'owner',another.mutationId);await assert.rejects(discardKnowledgeGroup(store,'owner',another.mutationId,JSON.stringify(group)),/already be saved/);
 });
+test('review selects the creation parent even when persistence returns child IDs first',async()=>{
+ const store=new MemoryStore(),c=await captureKnowledge(store,'owner',{title:'Parent'}),k=await localKnowledge(store,'owner',c.knowledgeId);await editKnowledge(store,'owner',k.id,{content:'Child'},k.generation);store.mutations.reverse();
+ const visible=await localKnowledge(store,'owner',k.id);assert.equal(visible.mutations[0].id,c.mutationId);const group=await knowledgeMutationGroup(store,'owner',visible.mutations[0].id);assert.equal(group.length,2);assert.equal(group[0].operation,'captureGlobalKnowledge');await discardKnowledgeGroup(store,'owner',c.mutationId,JSON.stringify(group));assert.equal(await localKnowledge(store,'owner',k.id),null);
+});
