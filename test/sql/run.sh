@@ -10,3 +10,4 @@ psql -v ON_ERROR_STOP=1 -f test/sql/global-knowledge.sql
 psql -v ON_ERROR_STOP=1 -f test/sql/trip-deletion.sql
 psql -v ON_ERROR_STOP=1 -f test/sql/artifact-delivery.sql
 psql -v ON_ERROR_STOP=1 -f test/sql/trip-ideas.sql
+psql -v ON_ERROR_STOP=1 -f test/sql/knowledge-mutations.sql
