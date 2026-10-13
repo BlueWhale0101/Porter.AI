@@ -39,6 +39,11 @@ async function reset(){
 }
 await reset();
 const host=express();host.use(express.json());
+host.post('/__test/knowledge-ui',async(_req,res)=>{
+ const england=await service.createTrip({title:'England',lifecycle:'draft'}),idea=await service.createKnowledge({title:'London pub',content:'A quiet riverside pint',tags:['London','Pubs'],planning:{primaryUrl:'https://example.com/pub'}});
+ res.json({tripId:trip.id,englandId:england.id,knowledgeId:idea.id});
+});
+host.post('/__test/knowledge-edit',async(req,res)=>{const k=await service.getKnowledge(req.body.id);res.json(await service.updateKnowledge(k.id,{title:'Changed on another device',content:'Server notes'},k.revision));});
 host.post('/__test/ingest',async(_req,res)=>{
  const blobs=new Map();service.artifactStorage={bucket:'porter-artifacts',async put({tripId,eventId,artifactId,data}){const key=`${tripId}/${eventId}/${artifactId}/original`;if(blobs.has(key))throw Error('exists');blobs.set(key,Buffer.from(data));return {provider:'supabase-storage',bucket:this.bucket,key};},async get(ref){return new Blob([blobs.get(ref.key)]);},async delete(ref){blobs.delete(ref.key);}};
  const target=await service.createTrip({title:'Disposable original-image tickets',participants:[{id:'wes',name:'Wes'},{id:'skye',name:'Skye'},{id:'tor',name:'Tor'}],lifecycle:'active'});

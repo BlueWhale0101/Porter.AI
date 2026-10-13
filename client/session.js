@@ -12,7 +12,7 @@ export function sessionFetch({fetcher=fetch,onAuthenticationRequired=()=>{}}={})
     return response;
   };
 }
-export function installSignIn({button,interactions,onClose,onSignedIn}) {
+export function installSignIn({button,interactions,onClose,onSignedIn,onDisconnected=()=>{}}) {
   const dialog=document.createElement('dialog');dialog.id='sign-in-dialog';document.body.append(dialog);
   button.onclick=()=>{
     if(interactions.active)return;
@@ -29,7 +29,7 @@ export function installSignIn({button,interactions,onClose,onSignedIn}) {
       }catch(error){dialog.querySelector('[role=status]').textContent=error.message;}finally{submit.disabled=false;}
     };
     dialog.querySelector('[data-logout]').onclick=async()=>{
-      try{const response=await fetch('/auth/logout',{method:'POST',credentials:'same-origin'});if(!response.ok)throw new Error();button.textContent='Sign in';dialog.querySelector('[role=status]').textContent='Sync disconnected. Local travel data is still saved on this device.';}catch{dialog.querySelector('[role=status]').textContent='Connect to the internet to disconnect this session.';}
+      try{const response=await fetch('/auth/logout',{method:'POST',credentials:'same-origin'});if(!response.ok)throw new Error();await onDisconnected();button.textContent='Sign in';dialog.querySelector('[role=status]').textContent='Sync disconnected. Local travel data is still saved on this device.';}catch{dialog.querySelector('[role=status]').textContent='Connect to the internet to disconnect this session.';}
     };
   };
 }

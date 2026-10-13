@@ -40,6 +40,14 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       - run: npx playwright test
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: knowledge-ui-evidence
+          path: |
+            test-results/**/trip-ideas.png
+            test-results/**/offline-library.png
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: browser-failure-traces
