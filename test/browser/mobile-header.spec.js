@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 
-test('phone masthead keeps Sync beside status and Trip tabs together',async({page,context,request})=>{
+test('phone masthead, horizontally scrollable Trip tabs, and detached NEXT stamp',async({page,context,request})=>{
   await request.post('/__test/reset');
   await context.addCookies([{name:'browser-regression-access',value:'browser-regression',url:'http://localhost:4178',httpOnly:true,sameSite:'Strict'}]);
   const data=await(await request.post('/__test/knowledge-ui')).json();
@@ -10,7 +10,7 @@ test('phone masthead keeps Sync beside status and Trip tabs together',async({pag
     await page.setViewportSize({width,height:844});
     const layout=await page.evaluate(()=>{
       const rect=selector=>{const {x,y,width,height}=document.querySelector(selector).getBoundingClientRect();return {x,y,width,height};};
-      return {viewport:document.documentElement.clientWidth,documentWidth:document.documentElement.scrollWidth,logo:rect('.wordmark'),account:rect('#account'),status:rect('#status'),sync:rect('#refresh'),tabs:[...document.querySelectorAll('.tabs [data-surface],.tabs #library')].map(el=>{const {x,y,width,height}=el.getBoundingClientRect();return {x,y,width,height};}),perspective:rect('#perspective')};
+      return {viewport:document.documentElement.clientWidth,documentWidth:document.documentElement.scrollWidth,logo:rect('.wordmark'),account:rect('#account'),status:rect('#status'),sync:rect('#refresh'),tabs:[...document.querySelectorAll('.tabs [data-surface],.tabs #library')].map(el=>{const {x,y,width,height}=el.getBoundingClientRect();return {x,y,width,height};}),perspective:rect('#perspective'),nav:rect('.tabs'),scrollWidth:document.querySelector('.tabs').scrollWidth,clientWidth:document.querySelector('.tabs').clientWidth,stamp:rect('.event.next .stamp'),next:rect('.event.next')};
     });
     expect(layout.documentWidth,JSON.stringify(layout)).toBeLessThanOrEqual(layout.viewport);
     expect(layout.logo.y,JSON.stringify(layout)).toBeLessThan(layout.status.y);
@@ -19,7 +19,12 @@ test('phone masthead keeps Sync beside status and Trip tabs together',async({pag
     expect(layout.sync.y,JSON.stringify(layout)).toBeLessThan(layout.status.y+layout.status.height+2);
     expect(layout.tabs).toHaveLength(5);
     expect(Math.max(...layout.tabs.map(t=>t.y))-Math.min(...layout.tabs.map(t=>t.y))).toBeLessThan(2);
-    expect(layout.perspective.y,JSON.stringify(layout)).toBeGreaterThanOrEqual(Math.max(...layout.tabs.map(t=>t.y+t.height))-2);
-    expect(layout.perspective.x+layout.perspective.width,JSON.stringify(layout)).toBeLessThanOrEqual(layout.viewport);
+    expect(Math.abs(layout.perspective.y-layout.tabs[0].y),JSON.stringify(layout)).toBeLessThan(3);
+    expect(layout.scrollWidth,JSON.stringify(layout)).toBeGreaterThan(layout.clientWidth);
+    expect(layout.perspective.x,JSON.stringify(layout)).toBeGreaterThanOrEqual(layout.tabs.at(-1).x+layout.tabs.at(-1).width);
+    expect(layout.stamp.y+layout.stamp.height,JSON.stringify(layout)).toBeLessThanOrEqual(layout.next.y-10);
+    await page.locator('.tabs').evaluate(el=>el.scrollLeft=el.scrollWidth);
+    await expect(page.locator('#perspective')).toBeInViewport();
+    await page.locator('.tabs').evaluate(el=>el.scrollLeft=0);
   }
 });
