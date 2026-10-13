@@ -7,7 +7,7 @@ test.beforeEach(async({page,context,request})=>{
   await page.reload();await expect(page.locator('#status')).toHaveText('Sync complete');await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
 });
 const events=async request=>(await(await request.get('/__test/events',{params:{tripId}})).json());
-const queued=page=>page.evaluate(()=>new Promise((resolve,reject)=>{const open=indexedDB.open('porter-v0',3);open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,r=db.transaction('mutations').objectStore('mutations').getAll();r.onsuccess=()=>{resolve(r.result.filter(x=>x.state!=='acknowledged'));db.close();};};}));
+const queued=page=>page.evaluate(()=>new Promise((resolve,reject)=>{const open=indexedDB.open('porter-v0');open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,r=db.transaction('mutations').objectStore('mutations').getAll();r.onsuccess=()=>{resolve(r.result.filter(x=>x.state!=='acknowledged'));db.close();};};}));
 async function add(page){await page.locator('#quick').tap();await page.locator('#quick-dialog #add-event').tap();}
 async function edit(page){await page.locator(`[data-event="${eventId}"]`).first().tap();await page.locator('#details #edit').tap();}
 async function waiting(request){await expect.poll(async()=>(await(await request.get('/__test/mutation-state')).json()).waiting).toBe(1);}

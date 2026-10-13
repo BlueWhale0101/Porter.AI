@@ -134,7 +134,7 @@ for(const interaction of ['quick','details','door','edit','quick-edit'])test(`wa
   const before=await diagnostics(page);const oldBuild=before.serviceWorker.buildId;
   // Keep an unsent mutation to prove activation does not clear device data.
   await page.evaluate(async()=>{
-    const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('porter-v0',3);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+    const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('porter-v0');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
     await new Promise((resolve,reject)=>{const tx=db.transaction('mutations','readwrite');tx.objectStore('mutations').put({id:'update-retains-queue',sequence:100,operation:'updateEvent',arguments:{tripId:location.hash.slice(1),eventId:'deliberate-conflict',expectedRevision:0,patch:{title:'Retained'}}});tx.oncomplete=resolve;tx.onerror=reject;});db.close();
   });
   let dialog;
