@@ -3,7 +3,8 @@ import {test,expect} from '@playwright/test';
 test('phone masthead keeps Sync beside status and Trip tabs together',async({page,context,request})=>{
   await request.post('/__test/reset');
   await context.addCookies([{name:'browser-regression-access',value:'browser-regression',url:'http://localhost:4178',httpOnly:true,sameSite:'Strict'}]);
-  await page.goto('/');
+  const data=await(await request.post('/__test/knowledge-ui')).json();
+  await page.goto('/#'+data.tripId);
   await expect(page.locator('#status')).toHaveText('Sync complete');
   for(const width of [390,320]){
     await page.setViewportSize({width,height:844});
