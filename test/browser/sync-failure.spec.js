@@ -36,6 +36,9 @@ test('failed sync keeps the Trip, ticket and queued edit after sign-in and recov
 
   await page.locator(`[data-tickets="${eventId}"]`).tap();
   await expect(page.locator('#door canvas')).toBeVisible();
+  const mutationRoute='**/client/mutate';
+  // Dialog release can trigger a replay independently of manual Sync.
+  await page.route(mutationRoute,route=>route.fulfill({status:503,json:{code:'backend_error'}}));
   await page.locator('#door #close').tap();
   await page.evaluate(async id=>{
     const db=await new Promise((resolve,reject)=>{
@@ -72,6 +75,7 @@ test('failed sync keeps the Trip, ticket and queued edit after sign-in and recov
   expect(disconnected.lastSuccessfulSync).toBe(initial.lastSuccessfulSync);
   expect(disconnected.pendingMutations).toBe(1);
   await page.unroute(packetRoute);
+  await page.unroute(mutationRoute);
   await page.locator('#refresh').tap();
   await expect(status).toHaveText('Sync complete');
   const recovered=await diagnostics(page);
@@ -79,4 +83,6 @@ test('failed sync keeps the Trip, ticket and queued edit after sign-in and recov
   expect(recovered.syncAttempt.id).not.toBe(failed.syncAttempt.id);
   expect(recovered.lastSuccessfulSync).not.toBe(initial.lastSuccessfulSync);
   expect(recovered.pendingMutations).toBe(0);
+  const saved=await(await request.get('/__test/aggregate')).json();
+  expect(saved.knowledge.filter(item=>item.title==='Draft retained across failure')).toHaveLength(1);
 });
