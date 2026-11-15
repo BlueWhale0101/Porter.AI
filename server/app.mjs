@@ -4,6 +4,16 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import { createClientApi } from '../client-api/server.mjs';
 import { createAuthenticatedPorterRuntime, AuthenticationError } from '../src/runtime.js';
 import { accessCookie,installAuth } from './auth.mjs';
+import { correlationId } from '../client/sync-failure.js';
+
+function syncRoute(path) {
+  if(path==='/auth/login')return 'login';
+  if(path==='/auth/refresh')return 'session_renewal';
+  if(path==='/client/identity')return 'identity';
+  if(/^\/client\/trips\/[^/]+\/packet$/.test(path))return 'trip_retrieval';
+  if(/^\/client\/artifacts\/[^/]+\/[^/]+$/.test(path))return 'artifact_retrieval';
+  return null;
+}
 
 export function createProductionApp({config,dist,build,runtimeForToken=token=>createAuthenticatedPorterRuntime(token,config.runtime),authOptions,logger=entry=>console.log(JSON.stringify(entry))}) {
   const hosts={allowedHosts:[config.hostname,'127.0.0.1','localhost']};
@@ -14,7 +24,11 @@ export function createProductionApp({config,dist,build,runtimeForToken=token=>cr
     res.set('X-Frame-Options','DENY');
     // Existing Calendar geometry uses inline styles; scripts remain local and external.
     res.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
-    res.on('finish',()=>logger({requestId,method:req.method,route:req.path.startsWith('/client/')?'/client':req.path.startsWith('/auth/')?'/auth':'/static',status:res.statusCode,revision:build.revision}));
+    const phase=syncRoute(req.path),attemptId=phase?correlationId(req.get('X-Porter-Sync-Attempt')):null;
+    res.on('finish',()=>logger({
+      requestId,method:req.method,route:req.path.startsWith('/client/')?'/client':req.path.startsWith('/auth/')?'/auth':'/static',
+      status:res.statusCode,revision:build.revision,...(phase?{phase}:{}),...(attemptId?{attemptId}:{}),
+    }));
     if(!['GET','HEAD','OPTIONS'].includes(req.method)&&req.headers.origin!==config.origin&&!(req.headers.authorization&&!req.headers.origin))return res.status(403).json({code:'origin_denied'});
     next();
   });

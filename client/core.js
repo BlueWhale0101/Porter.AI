@@ -1,3 +1,4 @@
+import { SyncFailure, transportFailure } from './sync-failure.js';
 import { withoutDeletedEvents } from './deleted-events.js';
 import { replayEvent } from './event-mutations.js';
 import { replayKnowledge } from './knowledge-sync.js';
@@ -5,23 +6,124 @@ import { memoryKnowledgeTransaction,indexedKnowledgeTransaction } from './knowle
 import { parkingMutation } from '../src/parking.js';
 import { mutationFailure, queueBlocked } from './conflicts.js';
 const clone=value=>structuredClone(value);
+// Direct packet writes do not advance the verified-sync timestamp.
+function withVerifiedSync(packet, previous) {
+  const lastVerifiedSync = packet.meta?.lastVerifiedSync ?? previous?.meta?.lastVerifiedSync;
+  return lastVerifiedSync ? { ...packet, meta: { ...packet.meta, lastVerifiedSync } } : packet;
+}
+
 export const packetCacheId=(tripId,perspectiveParticipantId=null)=>`${encodeURIComponent(tripId)}:perspective:${encodeURIComponent(perspectiveParticipantId??'everyone')}`;
 const transactionDone=transaction=>new Promise((resolve,reject)=>{transaction.oncomplete=()=>resolve();transaction.onerror=()=>reject(transaction.error);transaction.onabort=()=>reject(transaction.error);});
-export class MemoryStore {constructor(seed={}){this.packets=new Map(seed.packets);this.artifacts=new Map(seed.artifacts);this.mutations=seed.mutations??[];this.active=seed.active??(seed.activeTripId?{tripId:seed.activeTripId,perspectiveParticipantId:null}:null);this.tripIndex=new Map(seed.tripIndex);this.knowledgeAccount=seed.knowledgeAccount;this.knowledge=new Map(seed.knowledge);this.knowledgeQueries=new Map(seed.knowledgeQueries);this.deleted=new Set(seed.deleted);this.deletedEvents=new Map(seed.deletedEvents);}async getKnowledgeAccount(){return clone(this.knowledgeAccount??null);}async setKnowledgeAccount(value){this.knowledgeAccount=clone(value);}async knowledgeTransaction(owner,change){return memoryKnowledgeTransaction(this,owner,change);}async deletedEventIds(id){return this.deletedEvents.get(id)??[];}async removeEvents(id,ids){this.deletedEvents.set(id,[...new Set([...(await this.deletedEventIds(id)),...ids])]);for(const [key,row] of this.packets)if(row.packet?.trip.id===id)this.packets.set(key,{...row,packet:withoutDeletedEvents(row.packet,ids)});for(const [key,row] of this.artifacts)if(row.tripId===id&&ids.includes(row.eventId))this.artifacts.delete(key);this.mutations=this.mutations.filter(x=>x.localKnowledge||!ids.includes(x.arguments?.eventId)&&!ids.includes(x.result?.id));}async isTripDeleted(id){return this.deleted.has(id);}async removeTrip(id){this.deleted.add(id);this.deletedEvents.delete(id);for(const [key,row] of this.packets)if(row.tripId===id||row.packet?.trip?.id===id||key===id)this.packets.delete(key);for(const [key,row] of this.artifacts)if(row.tripId===id)this.artifacts.delete(key);this.mutations=this.mutations.filter(x=>x.localKnowledge||x.arguments?.tripId!==id);this.tripIndex.delete(id);if(this.active?.tripId===id)this.active=null;}async getPacket(tripId,perspectiveParticipantId=null){if(this.deleted.has(tripId))return null;const key=packetCacheId(tripId,perspectiveParticipantId),cached=this.packets.get(key);if(cached)return clone({...cached,packet:withoutDeletedEvents(cached.packet,this.deletedEvents.get(tripId)??[])});const legacy=perspectiveParticipantId==null?this.packets.get(tripId):null;if(!legacy)return null;const migrated={...legacy,id:key,tripId,perspectiveParticipantId:null};this.packets.set(key,clone(migrated));await this.upsertTripIndex(legacy.packet?.trip,{usable:Boolean(legacy.meta?.usable),...(legacy.meta?.lastSync?{lastSync:legacy.meta.lastSync}:{})});return clone(migrated);}async putPacket(tripId,value,perspectiveParticipantId=null){if(this.deleted.has(tripId))return;const key=packetCacheId(tripId,perspectiveParticipantId);this.packets.set(key,clone({id:key,tripId,perspectiveParticipantId,...value}));await this.upsertTripIndex(value.packet?.trip,{usable:Boolean(value.meta?.usable),...(value.meta?.lastSync?{lastSync:value.meta.lastSync}:{})});}async putArtifact(value){if(this.deleted.has(value.tripId)||(this.deletedEvents.get(value.tripId)??[]).includes(value.eventId))return;this.artifacts.set(value.id,clone(value));}async getArtifacts(tripId){return clone([...this.artifacts.values()].filter(value=>!tripId||value.tripId===tripId));}async getActiveTrip(){return this.active?.tripId??null;}async getActiveSelection(){return clone(this.active);}async setActiveTrip(tripId,perspectiveParticipantId=null){if(this.deleted.has(tripId))return;this.active={tripId,perspectiveParticipantId};}async upsertTripIndex(trip,meta={}){if(!trip?.id||this.deleted.has(trip.id))return;this.tripIndex.set(trip.id,clone({...(this.tripIndex.get(trip.id)??{}),id:trip.id,title:trip.title,lifecycle:trip.lifecycle,revision:trip.revision,...(trip.ownerId?{ownerId:trip.ownerId}:{}),participants:trip.participants??[],...meta}));}async listTripIndex(){return clone([...this.tripIndex.values()]);}async commitCandidate(tripId,packet,artifacts,perspectiveParticipantId=null){if(this.deleted.has(tripId))return;const removed=this.deletedEvents.get(tripId)??[];packet={...packet,packet:withoutDeletedEvents(packet.packet,removed)};const packets=new Map(this.packets),cache=new Map(this.artifacts);const key=packetCacheId(tripId,perspectiveParticipantId);packets.set(key,clone({id:key,tripId,perspectiveParticipantId,...packet}));artifacts.filter(x=>!removed.includes(x.eventId)).forEach(x=>cache.set(x.id,clone(x)));this.packets=packets;this.artifacts=cache;await this.upsertTripIndex(packet.packet?.trip,{usable:true,...(packet.meta?.lastSync?{lastSync:packet.meta.lastSync}:{})});this.active={tripId,perspectiveParticipantId};}async enqueue(value){if(this.deleted.has(value.arguments?.tripId))throw new Error('Trip was deleted');this.mutations.push(clone({id:value.id??crypto.randomUUID(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...value,sequence:Math.max(0,...this.mutations.map(x=>x.sequence??0))+1}));}async allMutations(){return clone(this.mutations).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async changeQueue(change){const rows=clone(this.mutations),result=change(rows);if(result?.arguments&&this.deleted.has(result.arguments.tripId))throw new Error('Trip was deleted');this.mutations=rows.filter(x=>x.localKnowledge||!this.deleted.has(x.arguments?.tripId));return clone(result);}async pending(){return clone(this.mutations).filter(x=>x.state!=='acknowledged'&&(!x.localKnowledge||x.state!=='resolved')).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async settleMutation(id,value=null){if(this.deleted.has(value?.arguments?.tripId))return;this.mutations=this.mutations.flatMap(x=>x.id===id?(value?[clone(value)]:[]):[x]);}async replaceQueue(values){this.mutations=clone(values);}}
+export class MemoryStore {constructor(seed={}){this.packets=new Map(seed.packets);this.artifacts=new Map(seed.artifacts);this.mutations=seed.mutations??[];this.active=seed.active??(seed.activeTripId?{tripId:seed.activeTripId,perspectiveParticipantId:null}:null);this.tripIndex=new Map(seed.tripIndex);this.knowledgeAccount=seed.knowledgeAccount;this.knowledge=new Map(seed.knowledge);this.knowledgeQueries=new Map(seed.knowledgeQueries);this.deleted=new Set(seed.deleted);this.deletedEvents=new Map(seed.deletedEvents);}async getKnowledgeAccount(){return clone(this.knowledgeAccount??null);}async setKnowledgeAccount(value){this.knowledgeAccount=clone(value);}async knowledgeTransaction(owner,change){return memoryKnowledgeTransaction(this,owner,change);}async deletedEventIds(id){return this.deletedEvents.get(id)??[];}async removeEvents(id,ids){this.deletedEvents.set(id,[...new Set([...(await this.deletedEventIds(id)),...ids])]);for(const [key,row] of this.packets)if(row.packet?.trip.id===id)this.packets.set(key,{...row,packet:withoutDeletedEvents(row.packet,ids)});for(const [key,row] of this.artifacts)if(row.tripId===id&&ids.includes(row.eventId))this.artifacts.delete(key);this.mutations=this.mutations.filter(x=>x.localKnowledge||!ids.includes(x.arguments?.eventId)&&!ids.includes(x.result?.id));}async isTripDeleted(id){return this.deleted.has(id);}async removeTrip(id){this.deleted.add(id);this.deletedEvents.delete(id);for(const [key,row] of this.packets)if(row.tripId===id||row.packet?.trip?.id===id||key===id)this.packets.delete(key);for(const [key,row] of this.artifacts)if(row.tripId===id)this.artifacts.delete(key);this.mutations=this.mutations.filter(x=>x.localKnowledge||x.arguments?.tripId!==id);this.tripIndex.delete(id);if(this.active?.tripId===id)this.active=null;}async getPacket(tripId,perspectiveParticipantId=null){if(this.deleted.has(tripId))return null;const key=packetCacheId(tripId,perspectiveParticipantId),cached=this.packets.get(key);if(cached)return clone({...cached,packet:withoutDeletedEvents(cached.packet,this.deletedEvents.get(tripId)??[])});const legacy=perspectiveParticipantId==null?this.packets.get(tripId):null;if(!legacy)return null;const migrated={...legacy,id:key,tripId,perspectiveParticipantId:null};this.packets.set(key,clone(migrated));await this.upsertTripIndex(legacy.packet?.trip,{usable:Boolean(legacy.meta?.usable),...(legacy.meta?.lastSync?{lastSync:legacy.meta.lastSync}:{})});return clone(migrated);}async putPacket(tripId,value,perspectiveParticipantId=null){if(this.deleted.has(tripId))return;const key=packetCacheId(tripId,perspectiveParticipantId);this.packets.set(key,clone({id:key,tripId,perspectiveParticipantId,...withVerifiedSync(value,this.packets.get(key))}));await this.upsertTripIndex(value.packet?.trip,{usable:Boolean(value.meta?.usable),...(value.meta?.lastSync?{lastSync:value.meta.lastSync}:{})});}async putArtifact(value){if(this.deleted.has(value.tripId)||(this.deletedEvents.get(value.tripId)??[]).includes(value.eventId))return;this.artifacts.set(value.id,clone(value));}async getArtifacts(tripId){return clone([...this.artifacts.values()].filter(value=>!tripId||value.tripId===tripId));}async getActiveTrip(){return this.active?.tripId??null;}async getActiveSelection(){return clone(this.active);}async setActiveTrip(tripId,perspectiveParticipantId=null){if(this.deleted.has(tripId))return;this.active={tripId,perspectiveParticipantId};}async upsertTripIndex(trip,meta={}){if(!trip?.id||this.deleted.has(trip.id))return;this.tripIndex.set(trip.id,clone({...(this.tripIndex.get(trip.id)??{}),id:trip.id,title:trip.title,lifecycle:trip.lifecycle,revision:trip.revision,...(trip.ownerId?{ownerId:trip.ownerId}:{}),participants:trip.participants??[],...meta}));}async listTripIndex(){return clone([...this.tripIndex.values()]);}async commitCandidate(tripId,packet,artifacts,perspectiveParticipantId=null,activate=true,isCurrent=()=>true){if(this.deleted.has(tripId)||!isCurrent())return false;const removed=this.deletedEvents.get(tripId)??[];packet={...packet,packet:withoutDeletedEvents(packet.packet,removed)};const packets=new Map(this.packets),cache=new Map(this.artifacts);const key=packetCacheId(tripId,perspectiveParticipantId);packets.set(key,clone({id:key,tripId,perspectiveParticipantId,...withVerifiedSync(packet,packets.get(key))}));artifacts.filter(x=>!removed.includes(x.eventId)).forEach(x=>cache.set(x.id,clone(x)));this.packets=packets;this.artifacts=cache;await this.upsertTripIndex(packet.packet?.trip,{usable:true,...(packet.meta?.lastSync?{lastSync:packet.meta.lastSync}:{})});if(activate)this.active={tripId,perspectiveParticipantId};return true;}async enqueue(value){if(this.deleted.has(value.arguments?.tripId))throw new Error('Trip was deleted');this.mutations.push(clone({id:value.id??crypto.randomUUID(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...value,sequence:Math.max(0,...this.mutations.map(x=>x.sequence??0))+1}));}async allMutations(){return clone(this.mutations).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async changeQueue(change){const rows=clone(this.mutations),result=change(rows);if(result?.arguments&&this.deleted.has(result.arguments.tripId))throw new Error('Trip was deleted');this.mutations=rows.filter(x=>x.localKnowledge||!this.deleted.has(x.arguments?.tripId));return clone(result);}async pending(){return clone(this.mutations).filter(x=>x.state!=='acknowledged'&&(!x.localKnowledge||x.state!=='resolved')).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async settleMutation(id,value=null){if(this.deleted.has(value?.arguments?.tripId))return;this.mutations=this.mutations.flatMap(x=>x.id===id?(value?[clone(value)]:[]):[x]);}async replaceQueue(values){this.mutations=clone(values);}}
 export class IndexedDbStore {constructor(db='porter-v0'){this.db=db;}async #db(){return new Promise((resolve,reject)=>{const request=indexedDB.open(this.db,4);request.onupgradeneeded=()=>{['packets','artifacts','mutations','settings','tripIndex','knowledge','knowledgeQueries'].forEach(name=>{if(!request.result.objectStoreNames.contains(name))request.result.createObjectStore(name,{keyPath:'id'});});['mutations','knowledge','knowledgeQueries'].forEach(name=>{const table=request.transaction.objectStore(name);if(!table.indexNames.contains('ownerId'))table.createIndex('ownerId','ownerId');});};request.onblocked=()=>reject(new Error('Close other Porter windows to upgrade local data'));request.onsuccess=()=>{request.result.onversionchange=()=>request.result.close();resolve(request.result);};request.onerror=()=>reject(request.error);});}async isTripDeleted(id){return Boolean(await this.#op('settings','readonly',s=>s.get('deletedTrip:'+id)));}
 async deletedEventIds(id){return (await this.#op('settings','readonly',s=>s.get('deletedEvents:'+id)))?.eventIds??[];}
 async removeEvents(id,ids){const db=await this.#db(),tx=db.transaction(['settings','packets','artifacts','mutations'],'readwrite'),done=transactionDone(tx),settings=tx.objectStore('settings'),r=settings.get('deletedEvents:'+id);r.onsuccess=()=>settings.put({id:'deletedEvents:'+id,eventIds:[...new Set([...(r.result?.eventIds??[]),...ids])]});for(const name of ['packets','artifacts','mutations']){const table=tx.objectStore(name),request=table.getAll();request.onsuccess=()=>{for(const row of request.result){if(name==='packets'&&row.packet?.trip.id===id)table.put({...row,packet:withoutDeletedEvents(row.packet,ids)});else if(name==='artifacts'&&row.tripId===id&&ids.includes(row.eventId)||name==='mutations'&&!row.localKnowledge&&(ids.includes(row.arguments?.eventId)||ids.includes(row.result?.id)))table.delete(row.id);}};}try{await done;}finally{db.close();}}
-async #tripWrite(names,id,write){const db=await this.#db(),tx=db.transaction([...new Set(['settings',...names])],'readwrite'),done=transactionDone(tx);const request=tx.objectStore('settings').get('deletedTrip:'+id);request.onsuccess=()=>{if(!request.result){const events=tx.objectStore('settings').get('deletedEvents:'+id);events.onsuccess=()=>write(tx,events.result?.eventIds??[]);}};try{await done;}finally{db.close();}}
+async #tripWrite(names,id,write){
+  const db=await this.#db(),tx=db.transaction([...new Set(['settings',...names])],'readwrite'),done=transactionDone(tx);
+  const settings=tx.objectStore('settings'),request=settings.get('deletedTrip:'+id);
+  request.onsuccess=()=>{
+    if(request.result)return;
+    const events=settings.get('deletedEvents:'+id);
+    events.onsuccess=()=>write(tx,events.result?.eventIds??[]);
+  };
+  try{await done;}finally{db.close();}
+}
 async removeTrip(id){const db=await this.#db(),tx=db.transaction(['settings','packets','artifacts','mutations','tripIndex'],'readwrite'),done=transactionDone(tx),settings=tx.objectStore('settings');settings.put({id:'deletedTrip:'+id});settings.delete('deletedEvents:'+id);const active=settings.get('activeTrip');active.onsuccess=()=>{if(active.result?.tripId===id)settings.delete('activeTrip');};tx.objectStore('tripIndex').delete(id);for(const name of ['packets','artifacts','mutations']){const table=tx.objectStore(name),request=table.getAll();request.onsuccess=()=>request.result.filter(x=>!x.localKnowledge&&(x.tripId===id||x.packet?.trip?.id===id||x.arguments?.tripId===id||(name==='packets'&&x.id===id))).forEach(x=>table.delete(x.id));}try{await done;}finally{db.close();}}
 async getKnowledgeAccount(){return this.#op('settings','readonly',s=>s.get('knowledgeAccount'));}async setKnowledgeAccount(value){const db=await this.#db(),tx=db.transaction('settings','readwrite'),done=transactionDone(tx);tx.objectStore('settings').put({id:'knowledgeAccount',...value});try{await done;}finally{db.close();}}async knowledgeTransaction(owner,change){return indexedKnowledgeTransaction(await this.#db(),owner,change);}
-async #op(name,mode,operation){const db=await this.#db();return new Promise((resolve,reject)=>{const transaction=db.transaction(name,mode);transaction.oncomplete=transaction.onabort=()=>db.close();const request=operation(transaction.objectStore(name));request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}async getPacket(tripId,perspectiveParticipantId=null){if(await this.isTripDeleted(tripId))return null;const key=packetCacheId(tripId,perspectiveParticipantId),packet=await this.#op('packets','readonly',store=>store.get(key));if(packet||perspectiveParticipantId!=null)return packet?{...packet,packet:withoutDeletedEvents(packet.packet,await this.deletedEventIds(tripId))}:packet;const legacy=await this.#op('packets','readonly',store=>store.get(tripId));if(!legacy)return null;const migrated={...legacy,id:key,tripId,perspectiveParticipantId:null};await this.#tripWrite(['packets'],tripId,tx=>tx.objectStore('packets').put(migrated));await this.upsertTripIndex(legacy.packet?.trip,{usable:Boolean(legacy.meta?.usable),...(legacy.meta?.lastSync?{lastSync:legacy.meta.lastSync}:{})});return migrated;}async putPacket(tripId,value,perspectiveParticipantId=null){return this.commitCandidate(tripId,value,[],perspectiveParticipantId,false);}putArtifact(value){return this.#tripWrite(['artifacts'],value.tripId,(tx,removed)=>{if(!removed.includes(value.eventId))tx.objectStore('artifacts').put(value);});}async getArtifacts(tripId){const artifacts=await this.#op('artifacts','readonly',store=>store.getAll());return tripId?artifacts.filter(value=>value.tripId===tripId):artifacts;}async getActiveTrip(){return (await this.getActiveSelection())?.tripId??null;}getActiveSelection(){return this.#op('settings','readonly',store=>store.get('activeTrip'));}setActiveTrip(tripId,perspectiveParticipantId=null){return this.#tripWrite([],tripId,tx=>tx.objectStore('settings').put({id:'activeTrip',tripId,perspectiveParticipantId}));}async upsertTripIndex(trip,meta={}){if(!trip?.id)return;return this.#tripWrite(['tripIndex'],trip.id,tx=>{const table=tx.objectStore('tripIndex'),request=table.get(trip.id);request.onsuccess=()=>table.put({...(request.result??{}),id:trip.id,title:trip.title,lifecycle:trip.lifecycle,revision:trip.revision,...(trip.ownerId?{ownerId:trip.ownerId}:{}),participants:trip.participants??[],...meta});});}listTripIndex(){return this.#op('tripIndex','readonly',store=>store.getAll());}async commitCandidate(tripId,packet,artifacts,perspectiveParticipantId=null,activate=true){return this.#tripWrite(['packets','artifacts','tripIndex'],tripId,(tx,removed)=>{packet={...packet,packet:withoutDeletedEvents(packet.packet,removed)};tx.objectStore('packets').put({id:packetCacheId(tripId,perspectiveParticipantId),tripId,perspectiveParticipantId,...packet});artifacts.filter(x=>!removed.includes(x.eventId)).forEach(x=>tx.objectStore('artifacts').put(x));if(activate)tx.objectStore('settings').put({id:'activeTrip',tripId,perspectiveParticipantId});const trip=packet.packet?.trip;if(trip){const table=tx.objectStore('tripIndex'),request=table.get(tripId);request.onsuccess=()=>table.put({...(request.result??{}),id:tripId,title:trip.title,lifecycle:trip.lifecycle,revision:trip.revision,...(trip.ownerId?{ownerId:trip.ownerId}:{}),participants:trip.participants??[],usable:Boolean(packet.meta?.usable),...(packet.meta?.lastSync?{lastSync:packet.meta.lastSync}:{})});}});}async enqueue(value){return this.changeQueue(rows=>{const item={id:value.id??crypto.randomUUID(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...value,sequence:Math.max(0,...rows.map(x=>x.sequence??0))+1};rows.push(item);return item;});}async allMutations(){return (await this.#op('mutations','readonly',store=>store.getAll())).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async changeQueue(change){const db=await this.#db(),tx=db.transaction(['mutations','settings'],'readwrite'),store=tx.objectStore('mutations'),done=transactionDone(tx);let result,failure;const settings=tx.objectStore('settings').getAll();settings.onsuccess=()=>{const removed=new Set(settings.result.filter(x=>x.id.startsWith('deletedTrip:')).map(x=>x.id.slice(12)));const request=store.getAll();request.onsuccess=()=>{try{const removedEvents=new Set(settings.result.flatMap(x=>x.eventIds??[])),gone=x=>!x.localKnowledge&&(removed.has(x.arguments?.tripId)||removedEvents.has(x.arguments?.eventId)||removedEvents.has(x.result?.id));const rows=request.result.filter(x=>!gone(x));result=change(rows);if(gone(result??{}))throw new Error('Trip was deleted');store.clear();rows.filter(x=>!gone(x)).forEach(x=>store.put(x));}catch(error){failure=error;tx.abort();}};};try{await done;return result;}catch(error){throw failure??error;}finally{db.close();}}async pending(){return (await this.#op('mutations','readonly',store=>store.getAll())).filter(x=>x.state!=='acknowledged'&&(!x.localKnowledge||x.state!=='resolved')).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async settleMutation(id,value=null){return this.changeQueue(rows=>{const index=rows.findIndex(x=>x.id===id);if(index>=0)rows.splice(index,1,...(value?[value]:[]));});}async replaceQueue(values){const db=await this.#db();const transaction=db.transaction('mutations','readwrite');const store=transaction.objectStore('mutations');store.clear();values.forEach(value=>store.put(value));await transactionDone(transaction);}}
+async #op(name,mode,operation){const db=await this.#db();return new Promise((resolve,reject)=>{const transaction=db.transaction(name,mode);transaction.oncomplete=transaction.onabort=()=>db.close();const request=operation(transaction.objectStore(name));request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}async getPacket(tripId,perspectiveParticipantId=null){if(await this.isTripDeleted(tripId))return null;const key=packetCacheId(tripId,perspectiveParticipantId),packet=await this.#op('packets','readonly',store=>store.get(key));if(packet||perspectiveParticipantId!=null)return packet?{...packet,packet:withoutDeletedEvents(packet.packet,await this.deletedEventIds(tripId))}:packet;const legacy=await this.#op('packets','readonly',store=>store.get(tripId));if(!legacy)return null;const migrated={...legacy,id:key,tripId,perspectiveParticipantId:null};await this.#tripWrite(['packets'],tripId,tx=>tx.objectStore('packets').put(migrated));await this.upsertTripIndex(legacy.packet?.trip,{usable:Boolean(legacy.meta?.usable),...(legacy.meta?.lastSync?{lastSync:legacy.meta.lastSync}:{})});return migrated;}async putPacket(tripId,value,perspectiveParticipantId=null){return this.commitCandidate(tripId,value,[],perspectiveParticipantId,false);}putArtifact(value){return this.#tripWrite(['artifacts'],value.tripId,(tx,removed)=>{if(!removed.includes(value.eventId))tx.objectStore('artifacts').put(value);});}async getArtifacts(tripId){const artifacts=await this.#op('artifacts','readonly',store=>store.getAll());return tripId?artifacts.filter(value=>value.tripId===tripId):artifacts;}async getActiveTrip(){return (await this.getActiveSelection())?.tripId??null;}getActiveSelection(){return this.#op('settings','readonly',store=>store.get('activeTrip'));}setActiveTrip(tripId,perspectiveParticipantId=null){return this.#tripWrite([],tripId,tx=>tx.objectStore('settings').put({id:'activeTrip',tripId,perspectiveParticipantId}));}async upsertTripIndex(trip,meta={}){if(!trip?.id)return;return this.#tripWrite(['tripIndex'],trip.id,tx=>{const table=tx.objectStore('tripIndex'),request=table.get(trip.id);request.onsuccess=()=>table.put({...(request.result??{}),id:trip.id,title:trip.title,lifecycle:trip.lifecycle,revision:trip.revision,...(trip.ownerId?{ownerId:trip.ownerId}:{}),participants:trip.participants??[],...meta});});}listTripIndex(){return this.#op('tripIndex','readonly',store=>store.getAll());}async commitCandidate(tripId,value,artifacts,perspectiveParticipantId=null,activate=true,isCurrent=()=>true){
+  let written=false;
+  await this.#tripWrite(['packets','artifacts','tripIndex'],tripId,(tx,removed)=>{
+    if(!isCurrent())return;
+    const id=packetCacheId(tripId,perspectiveParticipantId),packets=tx.objectStore('packets');
+    const previous=packets.get(id);
+    previous.onsuccess=()=>{
+      if(!isCurrent())return;
+      const packet=withVerifiedSync({...value,packet:withoutDeletedEvents(value.packet,removed)},previous.result);
+      packets.put({id,tripId,perspectiveParticipantId,...packet});
+      const cache=tx.objectStore('artifacts');
+      artifacts.filter(item=>!removed.includes(item.eventId)).forEach(item=>cache.put(item));
+      if(activate)tx.objectStore('settings').put({id:'activeTrip',tripId,perspectiveParticipantId});
+      const trip=packet.packet?.trip;
+      if(trip){
+        const table=tx.objectStore('tripIndex'),request=table.get(tripId);
+        request.onsuccess=()=>{
+          if(!isCurrent()){tx.abort();return;}
+          table.put({...(request.result??{}),id:tripId,title:trip.title,lifecycle:trip.lifecycle,revision:trip.revision,
+            ...(trip.ownerId?{ownerId:trip.ownerId}:{}),participants:trip.participants??[],usable:Boolean(packet.meta?.usable),
+            ...(packet.meta?.lastSync?{lastSync:packet.meta.lastSync}:{})});
+        };
+      }
+      written=true;
+    };
+  });
+  return written;
+}
+async enqueue(value){return this.changeQueue(rows=>{const item={id:value.id??crypto.randomUUID(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...value,sequence:Math.max(0,...rows.map(x=>x.sequence??0))+1};rows.push(item);return item;});}async allMutations(){return (await this.#op('mutations','readonly',store=>store.getAll())).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async changeQueue(change){const db=await this.#db(),tx=db.transaction(['mutations','settings'],'readwrite'),store=tx.objectStore('mutations'),done=transactionDone(tx);let result,failure;const settings=tx.objectStore('settings').getAll();settings.onsuccess=()=>{const removed=new Set(settings.result.filter(x=>x.id.startsWith('deletedTrip:')).map(x=>x.id.slice(12)));const request=store.getAll();request.onsuccess=()=>{try{const removedEvents=new Set(settings.result.flatMap(x=>x.eventIds??[])),gone=x=>!x.localKnowledge&&(removed.has(x.arguments?.tripId)||removedEvents.has(x.arguments?.eventId)||removedEvents.has(x.result?.id));const rows=request.result.filter(x=>!gone(x));result=change(rows);if(gone(result??{}))throw new Error('Trip was deleted');store.clear();rows.filter(x=>!gone(x)).forEach(x=>store.put(x));}catch(error){failure=error;tx.abort();}};};try{await done;return result;}catch(error){throw failure??error;}finally{db.close();}}async pending(){return (await this.#op('mutations','readonly',store=>store.getAll())).filter(x=>x.state!=='acknowledged'&&(!x.localKnowledge||x.state!=='resolved')).sort((a,b)=>(a.sequence??0)-(b.sequence??0));}async settleMutation(id,value=null){return this.changeQueue(rows=>{const index=rows.findIndex(x=>x.id===id);if(index>=0)rows.splice(index,1,...(value?[value]:[]));});}async replaceQueue(values){const db=await this.#db();const transaction=db.transaction('mutations','readwrite');const store=transaction.objectStore('mutations');store.clear();values.forEach(value=>store.put(value));await transactionDone(transaction);}}
 export class PerformanceTrace {constructor(context={}){this.context={...context};this.marks={};this.measures={};}mark(name,{once=false}={}){if(once&&this.marks[name]!==undefined)return this.marks[name];const value=performance.now();this.marks[name]=value;performance.mark?.(`porter:${name}`);return value;}markFirst(name){return this.mark(name,{once:true});}measure(name,start,end){if(this.marks[start]!==undefined&&this.marks[end]!==undefined)this.measures[name]=this.marks[end]-this.marks[start];}finish(){this.measure('first_remote_hydration','first_remote_hydration_start','first_remote_hydration_complete');this.measure('time_to_shell','app_start','shell_painted');this.measure('local_packet_read','local_packet_open_start','local_packet_ready');this.measure('time_to_first_useful_render','app_start','first_useful_render');this.measure('time_to_utility_interactive','app_start','critical_actions_interactive');this.measure('synchronization','background_sync_start','background_sync_complete');this.measure('enhancement','enhancement_start','enhancement_complete');this.measure('time_to_ticket_visible','door_mode_open_start','ticket_visible');}json(){this.finish();return {context:this.context,marks:this.marks,measures:this.measures};}}
 export function validatePacket(packet){if(!packet||packet.packetVersion!==1||!packet.trip?.id||!packet.events||!packet.current)throw new TypeError('Malformed TripPacket');return packet;}
 export async function checksum(data){const bytes=data instanceof ArrayBuffer?data:data.buffer.slice(data.byteOffset??0,(data.byteOffset??0)+(data.byteLength??data.length));const digest=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(digest)].map(x=>x.toString(16).padStart(2,'0')).join('');}
 export const artifactCacheId=(tripId,eventId,artifactId)=>[tripId,eventId,artifactId].map(encodeURIComponent).join(':');
 const matchingArtifact=(tripId,manifest,cache)=>cache.find(item=>item.id===artifactCacheId(tripId,manifest.eventId,manifest.id)&&item.state==='verified'&&(!manifest.version||item.version===manifest.version)&&(!manifest.checksum||item.checksum===manifest.checksum));
 export function readiness(packet,artifacts){const manifest=packet.artifactManifest??[];let ready=0,external=0;for(const access of packet.access??[]){if(access.status==='external_dynamic'){external++;continue;}if((access.artifactIds??[]).some(id=>matchingArtifact(packet.trip.id,manifest.find(item=>item.id===id&&item.eventId===access.eventId)??{id,eventId:access.eventId},artifacts)))ready++;}const required=(packet.access??[]).filter(x=>x.status!=='external_dynamic').length;return {required,ready,external,missing:required-ready,state:ready===required?'ready_offline':ready?'partially_ready':'missing'};}
-export async function syncPacket({store,api,tripId,perspectiveParticipantId=null,fetchArtifact,preserveOnFailure=true,onPhase=()=>{},isCurrent=()=>true}){const previous=await store.getPacket(tripId,perspectiveParticipantId),controller=new AbortController(),timer=setTimeout(()=>controller.abort(new Error('Trip preparation timed out. Try again.')),30000);timer.unref?.();try {onPhase('Loading trip');const candidate=validatePacket(await api.packet(tripId,perspectiveParticipantId,{signal:controller.signal}));onPhase('Preparing offline access');const staged=[];for(const artifact of (candidate.artifactManifest??[]).filter(x=>x.offlineRequired)){const bytes=await fetchArtifact(artifact,{signal:controller.signal});if(!bytes?.data)throw new Error(`Required artifact ${artifact.id} unavailable`);if(artifact.version&&bytes.version!==artifact.version)throw new Error('Artifact version mismatch');const actualChecksum=await checksum(bytes.data);if(artifact.checksum&&actualChecksum!==artifact.checksum)throw new Error('Artifact checksum mismatch');staged.push({id:artifactCacheId(tripId,artifact.eventId,artifact.id),tripId,eventId:artifact.eventId,artifactId:artifact.id,state:'verified',version:bytes.version??artifact.version,checksum:actualChecksum,mediaType:artifact.mediaType,data:bytes.data});}controller.signal.throwIfAborted();if(!isCurrent())return candidate;await store.commitCandidate(tripId,{packet:candidate,meta:{revision:candidate.revision,generatedAt:candidate.generatedAt,lastSync:new Date().toISOString(),usable:true}},staged,perspectiveParticipantId);return candidate;}catch(error) {if(previous&&preserveOnFailure)return previous.packet;throw error;}finally{clearTimeout(timer);}}
+export async function syncPacket({
+  store,api,tripId,perspectiveParticipantId=null,fetchArtifact,preserveOnFailure=true,
+  onPhase=()=>{},isCurrent=()=>true,attempt,
+}){
+  let phase='cache_read',previous;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(new SyncFailure(phase,'network','timeout')),30000);
+  timer.unref?.();
+  const setPhase=value=>{phase=value;if(attempt)attempt.phase=value;};
+  const requireCurrent=()=>{
+    if(!isCurrent())throw new SyncFailure(phase,'cancelled','superseded');
+    controller.signal.throwIfAborted();
+  };
+  const options={signal:controller.signal,attempt};
+  try{
+    if(preserveOnFailure)previous=await store.getPacket(tripId,perspectiveParticipantId);
+    requireCurrent();
+    setPhase('trip_retrieval');
+    onPhase('Loading trip');
+    const candidate=await api.packet(tripId,perspectiveParticipantId,options);
+    try{validatePacket(candidate);}catch{throw new SyncFailure(phase,'trip','invalid_packet');}
+    if(candidate.trip.id!==tripId||(candidate.perspectiveParticipantId??null)!==perspectiveParticipantId){
+      throw new SyncFailure(phase,'trip','invalid_packet');
+    }
+    onPhase('Preparing offline access');
+    const staged=[];
+    for(const artifact of (candidate.artifactManifest??[]).filter(item=>item.offlineRequired)){
+      setPhase('artifact_retrieval');
+      requireCurrent();
+      const bytes=await fetchArtifact(artifact,options);
+      if(!bytes?.data)throw new SyncFailure(phase,'artifact','artifact_unavailable');
+      setPhase('artifact_verification');
+      if(artifact.version&&bytes.version!==artifact.version)throw new SyncFailure(phase,'artifact','artifact_version');
+      const digest=await checksum(bytes.data);
+      if(artifact.checksum&&digest!==artifact.checksum)throw new SyncFailure(phase,'artifact','artifact_checksum');
+      staged.push({id:artifactCacheId(tripId,artifact.eventId,artifact.id),tripId,eventId:artifact.eventId,
+        artifactId:artifact.id,state:'verified',version:bytes.version??artifact.version,checksum:digest,
+        mediaType:artifact.mediaType,data:bytes.data});
+    }
+    requireCurrent();
+    setPhase('candidate_commit');
+    clearTimeout(timer);
+    const lastSync=new Date().toISOString();
+    const committed=await store.commitCandidate(tripId,{
+      packet:candidate,meta:{revision:candidate.revision,generatedAt:candidate.generatedAt,lastSync,lastVerifiedSync:lastSync,usable:true},
+    },staged,perspectiveParticipantId,true,isCurrent);
+    if(committed===false||!isCurrent())throw new SyncFailure(phase,'cancelled','superseded');
+    return candidate;
+  }catch(error){
+    if(!isCurrent())throw new SyncFailure(phase,'cancelled','superseded');
+    if(previous&&preserveOnFailure&&error.category!=='cancelled')return previous.packet;
+    if(error instanceof SyncFailure)throw error;
+    if(controller.signal.aborted)throw controller.signal.reason;
+    if(phase==='candidate_commit')throw new SyncFailure(phase,'persistence','commit_failed');
+    if(phase==='cache_read')throw new SyncFailure(phase,'persistence','local_read_failed');
+    if(phase==='artifact_verification')throw new SyncFailure(phase,'artifact','artifact_verification');
+    throw transportFailure(phase,error,controller.signal);
+  }finally{clearTimeout(timer);}
+}
 const replays=new WeakMap();
 export function replayQueue(store,api,knowledgeSession=null){
   if(replays.has(store))return replays.get(store);
@@ -41,4 +143,86 @@ export function replayQueue(store,api,knowledgeSession=null){
   const run=(globalThis.navigator?.locks?navigator.locks.request('porter-replay-'+(store.db??'memory'),perform):perform()).finally(()=>replays.delete(store));
   replays.set(store,run);return run;
 }
-export async function startLocalFirst({store,tripId,perspectiveParticipantId,api,render,canAdopt=()=>true,onDeferred=()=>{},onHydration=()=>{},isCurrent=()=>true,trace=new PerformanceTrace()}){trace.mark('app_start');trace.mark('shell_painted');const active=await store.getActiveSelection?.()??{tripId:await store.getActiveTrip(),perspectiveParticipantId:null};const selectedTripId=tripId??active?.tripId, selectedPerspective=perspectiveParticipantId??(tripId?null:active?.perspectiveParticipantId??null);if(!selectedTripId)return {tripId:null,perspectiveParticipantId:null,local:null,sync:Promise.resolve({ok:false,error:{code:'no_active_trip',message:'No active local Trip'},localRetained:false}),trace};trace.context.tripId=selectedTripId;trace.context.perspectiveParticipantId=selectedPerspective;trace.mark('local_packet_open_start');const local=await store.getPacket(selectedTripId,selectedPerspective);trace.mark('local_packet_ready');if(local?.meta?.usable){await render(local.packet,{local:true,trace});trace.mark('first_useful_render');trace.mark('critical_actions_interactive');}const hydrating=!local?.meta?.usable;if(hydrating){trace.mark('first_remote_hydration_start');onHydration('Loading trip',trace);}trace.mark('enhancement_start');trace.mark('background_sync_start');const complete=()=>{trace.mark('background_sync_complete');trace.mark('enhancement_complete');};const sync=syncPacket({store,api,tripId:selectedTripId,perspectiveParticipantId:selectedPerspective,fetchArtifact:api.artifact,preserveOnFailure:false,isCurrent,onPhase:phase=>{if(hydrating)onHydration(phase,trace);}}).then(async packet=>{if(!isCurrent())return {ok:true,packet};if(canAdopt()){await render(packet,{local:false,synchronized:true,trace});if(hydrating){trace.markFirst('first_useful_render');trace.markFirst('critical_actions_interactive');}}else onDeferred(packet);if(hydrating)trace.mark('first_remote_hydration_complete');complete();return {ok:true,packet};}).catch(error=>{if(hydrating){trace.mark('first_remote_hydration_failed');onHydration('failed',trace,error);}complete();return {ok:false,error:{code:error.code??'sync_failed',name:error.name,message:error.message},localRetained:Boolean(local?.meta?.usable)};});return {tripId:selectedTripId,perspectiveParticipantId:selectedPerspective,local,sync,trace};}
+export function createSyncAttempt(){
+  return {id:crypto.randomUUID(),state:'running',phase:'cache_read',failure:null,requests:{}};
+}
+
+export async function startLocalFirst({
+  store,tripId,perspectiveParticipantId,api,render,canAdopt=()=>true,onDeferred=()=>{},onHydration=()=>{},
+  isCurrent=()=>true,trace=new PerformanceTrace(),attempt=createSyncAttempt(),
+}){
+  trace.mark('app_start');
+  trace.mark('shell_painted');
+  let selectedTripId=tripId,selectedPerspective=perspectiveParticipantId,local,hydrating=true;
+  const result=sync=>({tripId:selectedTripId,perspectiveParticipantId:selectedPerspective,local,sync,trace,attempt});
+  const failed=error=>{
+    if(!isCurrent())error=new SyncFailure(attempt.phase,'cancelled','superseded');
+    const request=attempt.requests[error.phase==='artifact_verification'?'artifact_retrieval':error.phase];
+    const failure={...error.summary(),requestId:error.requestId??request?.requestId??null};
+    attempt.state=error.category==='cancelled'?'cancelled':'failed';
+    attempt.phase=error.phase;
+    attempt.failure=failure;
+    if(hydrating&&attempt.state==='failed'){
+      trace.mark('first_remote_hydration_failed');
+      onHydration('failed',trace,failure);
+    }
+    return {ok:false,error:failure,localRetained:Boolean(local?.meta?.usable)};
+  };
+  try{
+    const active=await store.getActiveSelection?.()??{tripId:await store.getActiveTrip(),perspectiveParticipantId:null};
+    selectedTripId=tripId??active?.tripId;
+    selectedPerspective=perspectiveParticipantId??(tripId?null:active?.perspectiveParticipantId??null);
+    trace.context.tripId=selectedTripId;
+    trace.context.perspectiveParticipantId=selectedPerspective;
+    if(!selectedTripId){
+      attempt.state='skipped';
+      return result(Promise.resolve({ok:false,error:new SyncFailure('cache_read','trip','no_active_trip').summary(),localRetained:false}));
+    }
+    trace.mark('local_packet_open_start');
+    local=await store.getPacket(selectedTripId,selectedPerspective);
+    trace.mark('local_packet_ready');
+    hydrating=!local?.meta?.usable;
+    if(!isCurrent())return result(Promise.resolve(failed(new SyncFailure('cache_read','cancelled','superseded'))));
+    if(!hydrating){
+      attempt.phase='local_render';
+      await render(local.packet,{local:true,trace});
+      trace.mark('first_useful_render');
+      trace.mark('critical_actions_interactive');
+    }
+  }catch{
+    const error=attempt.phase==='local_render'
+      ? new SyncFailure(attempt.phase,'persistence','adoption_failed')
+      : new SyncFailure(attempt.phase,'persistence','local_read_failed');
+    return result(Promise.resolve(failed(error)));
+  }
+  if(hydrating){
+    trace.mark('first_remote_hydration_start');
+    onHydration('Loading trip',trace);
+  }
+  trace.mark('enhancement_start');
+  trace.mark('background_sync_start');
+  const sync=syncPacket({
+    store,api,tripId:selectedTripId,perspectiveParticipantId:selectedPerspective,fetchArtifact:api.artifact,
+    preserveOnFailure:false,isCurrent,attempt,onPhase:phase=>{if(hydrating)onHydration(phase,trace);},
+  }).then(async packet=>{
+    attempt.phase='adoption';
+    if(!isCurrent())return failed(new SyncFailure('adoption','cancelled','superseded'));
+    try{
+      if(canAdopt()){
+        await render(packet,{local:false,synchronized:true,trace});
+        if(hydrating){trace.markFirst('first_useful_render');trace.markFirst('critical_actions_interactive');}
+      }else onDeferred(packet);
+    }catch{
+      return failed(new SyncFailure('adoption','persistence','adoption_failed'));
+    }
+    if(!isCurrent())return failed(new SyncFailure('adoption','cancelled','superseded'));
+    if(hydrating)trace.mark('first_remote_hydration_complete');
+    attempt.state='succeeded';
+    attempt.phase='complete';
+    return {ok:true,packet};
+  },failed).finally(()=>{
+    trace.mark('background_sync_complete');
+    trace.mark('enhancement_complete');
+  });
+  return result(sync);
+}
