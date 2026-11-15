@@ -84,7 +84,7 @@ test('expired authentication never blocks usable local rendering or clears local
 });
 test('diagnostics contain revision, cache, artifact and scoped conflict state without private content',async()=>{
  const store=new MemoryStore(),trip=newTrip({title:'Private title'},owner),packet=buildTripPacket({trip,events:[],knowledge:[]});
- await store.putPacket(trip.id,{packet,meta:{usable:true,lastSync:'real-sync'}});await store.setActiveTrip(trip.id);await store.enqueue({state:'conflict',arguments:{tripId:'other',secret:'not included'}});
+ await store.putPacket(trip.id,{packet,meta:{usable:true,lastVerifiedSync:'real-sync'}});await store.setActiveTrip(trip.id);await store.enqueue({state:'conflict',arguments:{tripId:'other',secret:'not included'}});
  const result=await diagnosticsSnapshot({store,packet,activeRun:{local:{meta:{usable:true}}},revision:build.revision,online:false,sw:{controlled:false}});
  assert.equal(result.conflicts,0);assert.equal(result.lastSuccessfulSync,'real-sync');assert.equal(result.usefulLocalDataAtLaunch,true);assert.equal(result.localPacketUsable,true);
  assert.ok(!JSON.stringify(result).includes('Private title'));assert.ok(!JSON.stringify(result).includes('not included'));

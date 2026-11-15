@@ -14,3 +14,14 @@ test('named confirmation cancel preserves aggregate; confirmed deletion purges c
 });
 test('failed backend deletion keeps local Trip and retry succeeds',async({page,request})=>{const before=await state(request);await edit(page);await request.post('/__test/delete-failure',{data:{fail:true}});await page.locator('#confirm-delete').tap();await expect(page.locator('#delete-message')).toContainText('Your local Trip is retained');expect(await state(request)).toEqual(before);await expect(page.locator('#library-dialog')).toBeVisible();await request.post('/__test/delete-failure',{data:{fail:false}});await page.locator('#confirm-delete').tap();await expect(page.locator('#app h1')).toHaveText('Trips');});
 test('concurrent child creation after confirmation causes conflict and retains aggregate',async({page,request})=>{await edit(page);await request.post('/__test/deletion-change');const before=await state(request);await page.locator('#confirm-delete').tap();await expect(page.locator('#delete-message')).toContainText('Nothing was deleted');expect(await state(request)).toEqual(before);await page.locator('#cancel-delete').tap();await page.locator('#library-dialog #close').tap();await page.locator(`[data-trip="${tripId}"]`).tap();await expect(page.locator('.trip-overview h1')).toHaveText('Browser regression Trip');});
+
+test('confirmed deletion propagates to a second app context',async({page,context})=>{
+ const peer=await context.newPage();
+ await peer.goto(`/#${tripId}`);
+ await expect(peer.locator('#status')).toHaveText('Sync complete');
+ await edit(page);
+ await page.locator('#confirm-delete').tap();
+ await expect(page.locator('#app h1')).toHaveText('Trips');
+ await expect(peer.locator('#app h1')).toHaveText('Trips');
+ await expect(peer.locator(`[data-trip="${tripId}"]`)).toHaveCount(0);
+});

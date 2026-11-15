@@ -1,3 +1,4 @@
+import { correlationId, responseCorrelation, SyncFailure, transportFailure } from './sync-failure.js';
 import { withoutDeletedEvents } from './deleted-events.js';
 import { createKnowledgeUI } from './knowledge-ui.js';
 import { openConflictRecovery } from './conflict-ui.js';
@@ -15,7 +16,7 @@ import QRCode from 'qrcode';
 import { sessionFetch, installSignIn } from './session.js';
 import { diagnosticsSnapshot, installDiagnostics, workerIdentity } from './diagnostics.js';
 import JsBarcode from 'jsbarcode';
-import { IndexedDbStore, PerformanceTrace, replayQueue, startLocalFirst } from './core.js';
+import { IndexedDbStore, PerformanceTrace, createSyncAttempt, replayQueue, startLocalFirst } from './core.js';
 import { InteractionController, releaseAndAdoptIfSafe } from './interaction.js';
 import { activeJourney, doorEntries, eventTime, journeyTime, localTime, mapUrl, navigationFor, requestLocation, ticketSummary } from './journey.js';
 import { itineraryProjection, localDateTimeValue, planningDetails, tripPlanningSummary, withPendingEvents, zonedDateTimeToIso } from './planning.js';
@@ -28,11 +29,38 @@ const fixture=fixtureMode?await (await import('./dev/fixtures.js')).createFixtur
 const store=fixture?.store??new IndexedDbStore(), root=document.querySelector('#app'), status=document.querySelector('#status'), interactions=new InteractionController();
 let activeRun, packet, viewPacket, trace, deferredPacket=null, door={eventId:null,index:0}, surface='journey', perspectiveParticipantId=null;
 let calendarMode='week',calendarWeek=null,calendarTrip=null;
-let lastRequestError=null,swError=null,updates=null,lastEventSaveMs=null;
-const request=sessionFetch({onAuthenticationRequired:()=>{document.querySelector('#account').textContent='Sign in';}});
+let latestAttempt=null,lastAuthentication=null,lastRequestError=null,swError=null,updates=null,lastEventSaveMs=null;
+const noteAuthentication=result=>{lastAuthentication={...result,at:new Date().toISOString()};};
+const request=sessionFetch({
+  onAuthentication:noteAuthentication,
+  onAuthenticationRequired:()=>{document.querySelector('#account').textContent='Sign in';},
+});
 const headers=()=>({});
-const fail=async response=>{if(response.ok)return response;const body=await response.json().catch(()=>({}));lastRequestError={status:response.status,code:body.code??'request_failed',requestId:response.headers.get('X-Request-ID')};const error=new Error(response.status===401?'Sign in to synchronize; your saved data is still available.':body.message??'Porter request failed');error.code=response.status===409?'revision_conflict':response.status===401?'authentication_failed':response.status===400?'invalid_semantic_input':response.status===404?'not_found':'backend_error';throw error;};
-const productionApi={eventDeletionPreview:async id=>(await fail(await request(`/client/events/${id}/deletion`,{signal:AbortSignal.timeout(30000)}))).json(),deleteEvent:async(id,expected)=>(await fail(await request(`/client/events/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected}),signal:AbortSignal.timeout(30000)}))).json(),deletionPreview:async id=>(await fail(await request(`/client/trips/${id}/deletion`,{signal:AbortSignal.timeout(30000)}))).json(),deleteTrip:async(id,expected)=>(await fail(await request(`/client/trips/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected}),signal:AbortSignal.timeout(30000)}))).json(),trips:async()=>(await fail(await request('/client/trips',{headers:headers()}))).json(),packet:async(id,perspective=null,{signal}={})=>(await fail(await request(`/client/trips/${id}/packet${perspective ? `?perspective=${encodeURIComponent(perspective)}` : ''}`,{headers:headers(),signal}))).json(),artifact:async(a,{signal}={})=>{const r=await fail(await request(`/client/artifacts/${a.eventId}/${a.id}`,{headers:headers(),signal}));return {data:await r.arrayBuffer(),version:r.headers.get('X-Porter-Artifact-Version')||undefined,checksum:r.headers.get('X-Porter-Artifact-Checksum')||undefined};},mutate:async mutation=>(await fail(await request('/client/mutate',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify(mutation),signal:AbortSignal.timeout(30000)}))).json()};
+const fail=async response=>{if(response.ok)return response;const body=await response.json().catch(()=>({}));lastRequestError={status:response.status,code:response.status===401?'authentication_failed':response.status===404?'not_found':'request_failed',requestId:correlationId(response.headers.get('X-Request-ID'))};const error=new Error(response.status===401?'Sign in to synchronize; your saved data is still available.':body.message??'Porter request failed');error.code=response.status===409?'revision_conflict':response.status===401?'authentication_failed':response.status===400?'invalid_semantic_input':response.status===404?'not_found':'backend_error';throw error;};
+async function syncResponse(url,phase,{signal,attempt}={}){
+  const headers=attempt?{'X-Porter-Sync-Attempt':attempt.id}:{};
+  const response=await request(url,{signal,headers},{phase,attempt});
+  if(response.ok)return response;
+  const correlation=responseCorrelation(response);
+  if(response.status===401)throw new SyncFailure(phase,'authentication','authentication_failed',correlation);
+  const isTrip=phase==='trip_retrieval';
+  throw new SyncFailure(phase,isTrip?'trip':'artifact',isTrip?'trip_unavailable':'artifact_unavailable',correlation);
+}
+
+const productionApi={eventDeletionPreview:async id=>(await fail(await request(`/client/events/${id}/deletion`,{signal:AbortSignal.timeout(30000)}))).json(),deleteEvent:async(id,expected)=>(await fail(await request(`/client/events/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected}),signal:AbortSignal.timeout(30000)}))).json(),deletionPreview:async id=>(await fail(await request(`/client/trips/${id}/deletion`,{signal:AbortSignal.timeout(30000)}))).json(),deleteTrip:async(id,expected)=>(await fail(await request(`/client/trips/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({expected}),signal:AbortSignal.timeout(30000)}))).json(),trips:async()=>(await fail(await request('/client/trips',{headers:headers()}))).json(),packet:async(id,perspective=null,options)=>{
+  const phase='trip_retrieval';
+  const response=await syncResponse(`/client/trips/${id}/packet${perspective ? `?perspective=${encodeURIComponent(perspective)}` : ''}`,phase,options);
+  try{return await response.json();}
+  catch(error){
+    if(error instanceof SyntaxError)throw new SyncFailure(phase,'trip','invalid_packet',responseCorrelation(response));
+    throw transportFailure(phase,error,options?.signal);
+  }
+},artifact:async(artifact,options)=>{
+  const phase='artifact_retrieval';
+  const response=await syncResponse(`/client/artifacts/${artifact.eventId}/${artifact.id}`,phase,options);
+  try{return {data:await response.arrayBuffer(),version:response.headers.get('X-Porter-Artifact-Version')||undefined};}
+  catch(error){throw transportFailure(phase,error,options?.signal);}
+},mutate:async mutation=>(await fail(await request('/client/mutate',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify(mutation),signal:AbortSignal.timeout(30000)}))).json()};
 const api=fixture?.api??productionApi;
 const knowledgeUI=createKnowledgeUI({root,status,store,request,fail,interactions,getTrip:()=>packet?.trip,getPacket:()=>packet,onNavigate:()=>{launchGeneration++;libraryGeneration++;deferredPacket=null;deferredHydration=null;document.querySelector('#visual-notice').replaceChildren();},onTrips:openLibrary,onTripView:async next=>{surface=next;await render(packet,{local:true,trace});},onDialogClose:async(_dialog,owner)=>{await safe(owner);},onSync:syncEvents});
 
@@ -52,7 +80,7 @@ function calendarMarkup(){
   return `${planningHeader()}${result.html}<button class="quick" id="add-event">＋ Add event</button>`;
 }
 
-async function render(next,{local,trace:nextTrace}){if(knowledgeUI.active)return;if(await store.isTripDeleted(next.trip.id))return;if(interactions.active){deferredPacket={tripId:next.trip.id,perspectiveParticipantId:next.perspectiveParticipantId??perspectiveParticipantId,packet:next,local};return;}packet=next;perspectiveParticipantId=next.perspectiveParticipantId??null;trace=nextTrace;const pending=await store.pending(),tripPending=pending.filter(m=>!m.localKnowledge&&m.arguments?.tripId===packet.trip.id),artifacts=await store.getArtifacts(packet.trip.id),records=await store.allMutations(),removedEvents=await store.deletedEventIds(next.trip.id);if(await store.isTripDeleted(next.trip.id))return;if(interactions.active){deferredPacket={tripId:packet.trip.id,perspectiveParticipantId,packet,local};return;}deferredHydration=null;viewPacket=withoutDeletedEvents(withPendingEvents(packet,records),removedEvents);status.textContent=tripPending.some(m=>m.state==='conflict')?'Edit conflict • resolution required':tripPending.length?'Saved locally · pending sync':local?'Local trip • syncing in background':'Sync complete';root.dataset.surface=surface;root.innerHTML=`${navTabs()}${tripPending.some(m=>m.state==='conflict')?`<section class="conflict-banner" role="status"><strong>Local edit needs review</strong><p>Server changes are safe. Resolve the stale local edit to finish syncing.</p>${tripPending.filter(m=>m.state==='conflict').map(m=>`<button type="button" data-resolve-conflict="${esc(m.id)}">Resolve local edit</button>`).join('')}</section>`:''}${surface==='journey'?journeyMarkup(artifacts,tripPending):surface==='itinerary'?itineraryMarkup(artifacts):calendarMarkup()}<dialog id="details"></dialog><dialog id="door"></dialog><dialog id="quick-dialog"></dialog>`;if(surface==='itinerary'){trace.markFirst('planning_open_start');trace.markFirst('itinerary_visible');}if(surface==='calendar'){trace.markFirst('planning_open_start');trace.markFirst('calendar_visible');}bind(artifacts);document.querySelector('#visual-notice').innerHTML=!navigator.onLine?systemMarkup('offline-ready'):'';}
+async function render(next,{local,synchronized=false,trace:nextTrace,isCurrent=()=>true}){if(knowledgeUI.active)return;if(await store.isTripDeleted(next.trip.id)||!isCurrent())return;if(interactions.active){deferredPacket={tripId:next.trip.id,perspectiveParticipantId:next.perspectiveParticipantId??perspectiveParticipantId,packet:next,local,synchronized};return;}const pending=await store.pending(),tripPending=pending.filter(m=>!m.localKnowledge&&m.arguments?.tripId===next.trip.id),artifacts=await store.getArtifacts(next.trip.id),records=await store.allMutations(),removedEvents=await store.deletedEventIds(next.trip.id);if(await store.isTripDeleted(next.trip.id)||!isCurrent())return;if(interactions.active){deferredPacket={tripId:next.trip.id,perspectiveParticipantId:next.perspectiveParticipantId??null,packet:next,local,synchronized};return;}packet=next;perspectiveParticipantId=next.perspectiveParticipantId??null;trace=nextTrace;deferredHydration=null;viewPacket=withoutDeletedEvents(withPendingEvents(packet,records),removedEvents);status.textContent=tripPending.some(m=>m.state==='conflict')?'Edit conflict • resolution required':tripPending.length?'Saved locally · pending sync':local?'Local trip • syncing in background':synchronized?'Sync complete':'Saved online';root.dataset.surface=surface;root.innerHTML=`${navTabs()}${tripPending.some(m=>m.state==='conflict')?`<section class="conflict-banner" role="status"><strong>Local edit needs review</strong><p>Server changes are safe. Resolve the stale local edit to finish syncing.</p>${tripPending.filter(m=>m.state==='conflict').map(m=>`<button type="button" data-resolve-conflict="${esc(m.id)}">Resolve local edit</button>`).join('')}</section>`:''}${surface==='journey'?journeyMarkup(artifacts,tripPending):surface==='itinerary'?itineraryMarkup(artifacts):calendarMarkup()}<dialog id="details"></dialog><dialog id="door"></dialog><dialog id="quick-dialog"></dialog>`;if(surface==='itinerary'){trace.markFirst('planning_open_start');trace.markFirst('itinerary_visible');}if(surface==='calendar'){trace.markFirst('planning_open_start');trace.markFirst('calendar_visible');}bind(artifacts);document.querySelector('#visual-notice').innerHTML=!navigator.onLine?systemMarkup('offline-ready'):'';}
 // The app root also carries data-surface as layout metadata; only tab buttons own navigation.
 function bind(artifacts){
 root.querySelectorAll('[data-resolve-conflict]').forEach(button=>button.onclick=()=>openRecovery(button.dataset.resolveConflict));
@@ -136,7 +164,7 @@ async function openTripEdit(tripId){if(interactions.active)return;const owner=in
 // A queued close event can belong to Quick Actions before the same dialog is
 // reopened as an editor. Do not release the new owner until it actually closes.
 function onDialogClose(dialog,owner){const close=()=>{if(dialog.open)return;dialog.removeEventListener('close',close);safe(owner);};dialog.addEventListener('close',close);}
-async function safe(owner){if(!interactions.owns(owner))return;deferredPacket=await releaseAndAdoptIfSafe(interactions,owner,deferredPacket,next=>{if(next.tripId===(hydratingTrip??packet?.trip?.id))return render(next.packet,{local:next.local??false,trace});});if(!interactions.active){if(packet?.trip?.id&&await store.isTripDeleted(packet.trip.id)){if(!interactions.active)await leaveDeletedTrip(packet.trip.id);return;}if(deferredHydration){const h=deferredHydration;hydrationState(h.phase,h.trace,h.error);}await updates?.safe();if(navigator.onLine&&(await store.pending()).length)syncEvents();}}
+async function safe(owner){if(!interactions.owns(owner))return;deferredPacket=await releaseAndAdoptIfSafe(interactions,owner,deferredPacket,next=>{if(next.tripId===(hydratingTrip??packet?.trip?.id))return render(next.packet,{local:next.local??false,synchronized:next.synchronized,trace});});if(!interactions.active){if(packet?.trip?.id&&await store.isTripDeleted(packet.trip.id)){if(!interactions.active)await leaveDeletedTrip(packet.trip.id);return;}if(deferredHydration){const h=deferredHydration;hydrationState(h.phase,h.trace,h.error);}await updates?.safe();if(navigator.onLine&&(await store.pending()).length)syncEvents();}}
 function hydrationState(phase,nextTrace,error){
   trace=nextTrace;hydratingTrip=trace.context.tripId;hydratingPerspective=trace.context.perspectiveParticipantId;if(interactions.active){deferredHydration={phase,trace:nextTrace,error};status.textContent=phase==='failed'?'Trip preparation failed':phase;return;}deferredHydration=null;root.dataset.surface='preparing';
   root.innerHTML=`<section class="preparing-trip" role="status"><h1>${phase==='failed'?'Trip could not be prepared':'Preparing trip…'}</h1><p>${phase==='failed'?esc(error?.message??'Connect and try again.'):esc(phase)}</p>${phase==='failed'?'<button id="retry-trip">Retry</button><button id="back-trips">Trips</button>':''}</section>`;
@@ -146,21 +174,40 @@ function hydrationState(phase,nextTrace,error){
 let hydratingTrip=null,hydratingPerspective=null,deferredHydration=null;
 let launchGeneration=0;
 async function launch(tripId=location.hash.slice(1)||null,perspective=undefined,replay=true){
-  tripId=tripId??await store.getActiveTrip();if(tripId&&await store.isTripDeleted(tripId)){await leaveDeletedTrip(tripId);return;}
   deferredPacket=null;deferredHydration=null;const generation=++launchGeneration,isCurrent=()=>generation===launchGeneration;
+  const attempt=createSyncAttempt();latestAttempt=attempt;
+  try{
+    tripId=tripId??await store.getActiveTrip();
+    const deleted=tripId&&await store.isTripDeleted(tripId);
+    if(!isCurrent()){attempt.state='cancelled';return;}
+    if(deleted){attempt.state='skipped';await leaveDeletedTrip(tripId);return;}
+  }catch{
+    if(!isCurrent())return;
+    attempt.state='failed';
+    attempt.failure=new SyncFailure('cache_read','persistence','local_read_failed').summary();
+    status.textContent=attempt.failure.message;
+    return;
+  }
   hydratingTrip=tripId;hydratingPerspective=perspective;
-  const run=await startLocalFirst({store,tripId,perspectiveParticipantId:perspective,api,isCurrent,
+  const run=await startLocalFirst({store,tripId,perspectiveParticipantId:perspective,api,isCurrent,attempt,
     onHydration:(...args)=>{if(isCurrent())hydrationState(...args);},
-    render:(...args)=>{if(isCurrent())return render(...args);},canAdopt:()=>!interactions.active,
-    onDeferred:next=>{if(!isCurrent())return;deferredPacket={tripId:next.trip.id,perspectiveParticipantId:next.perspectiveParticipantId??null,packet:next};status.textContent='Update ready when you finish';},
+    render:(next,options)=>{if(isCurrent())return render(next,{...options,isCurrent});},canAdopt:()=>!interactions.active,
+    onDeferred:next=>{if(!isCurrent())return;deferredPacket={tripId:next.trip.id,perspectiveParticipantId:next.perspectiveParticipantId??null,packet:next,synchronized:true};status.textContent='Update ready when you finish';},
     trace:new PerformanceTrace({revision:__PORTER_REVISION__,eventLocalSaveMs:lastEventSaveMs,online:navigator.onLine,pwa:matchMedia('(display-mode:standalone)').matches})});
   if(!isCurrent())return;activeRun=run;
-  if(!run.tripId){await openLibrary();return;}
+  if(!run.tripId&&attempt.state==='skipped'){await openLibrary();return;}
   if(run.local?.meta?.usable){perspectiveParticipantId=run.perspectiveParticipantId;if(location.hash!=='#'+run.tripId)history.replaceState(null,'','#'+run.tripId);}
   const outcome=await run.sync;if(!isCurrent())return;
-  if(!outcome.ok){if(outcome.error.code==='not_found'){await store.removeTrip(run.tripId);if(!interactions.active)await leaveDeletedTrip(run.tripId);return;}status.textContent=run.local?.meta?.usable?'Sync failed · local data retained':'Trip preparation failed · Retry';document.querySelector('#visual-notice').innerHTML=packet?systemMarkup(navigator.onLine?'sync-failed':'offline-ready'):'';return;}
+  if(!outcome.ok){
+    if(outcome.error.category==='cancelled')return;
+    const retained=run.local?.meta?.usable;
+    if(outcome.error.status)lastRequestError={status:outcome.error.status,code:outcome.error.code,requestId:outcome.error.requestId};
+    status.textContent=retained?`Sync failed · local data retained · ${outcome.error.message}`:'Trip preparation failed · Retry';
+    document.querySelector('#visual-notice').innerHTML=packet?systemMarkup(navigator.onLine?'sync-failed':'offline-ready'):'';
+    return;
+  }
   perspectiveParticipantId=run.perspectiveParticipantId;if(location.hash!=='#'+run.tripId)history.replaceState(null,'','#'+run.tripId);await retireEventReceipts(store,outcome.packet);
-  if(replay&&(await store.pending()).length)syncEvents();
+  if(replay&&(await store.pending()).length&&isCurrent())syncEvents();
 }
 async function leaveDeletedTrip(id){launchGeneration++;libraryGeneration++;deferredPacket=null;deferredHydration=null;hydratingTrip=null;confirmation.hidden=true;clearTimeout(undoTimer);if(packet?.trip?.id===id){packet=null;viewPacket=null;activeRun=null;perspectiveParticipantId=null;}if(location.hash==='#'+id)history.replaceState(null,'',location.pathname+location.search);await openLibrary();}
 const deletionChannel=typeof BroadcastChannel==='function'?new BroadcastChannel('porter-trip-removal'):null;
@@ -173,8 +220,8 @@ if(fixtureMode){
   controls.querySelector('button').onclick=openLibrary;
 
 }
-if(!fixtureMode)installSignIn({button:document.querySelector('#account'),interactions,onClose:safe,onSignedIn:async()=>{await knowledgeUI.signedIn();if(knowledgeUI.active)return syncEvents();return launch();},onDisconnected:()=>knowledgeUI.disconnected()});
-if(new URLSearchParams(location.search).get('porter-diagnostics')==='1')installDiagnostics(async()=>diagnosticsSnapshot({store,packet,activeRun,trace,revision:__PORTER_REVISION__,online:navigator.onLine,sw:await workerIdentity(),swError,lastError:lastRequestError,update:updates?.snapshot()}));
+if(!fixtureMode)installSignIn({button:document.querySelector('#account'),interactions,onClose:safe,onAuthentication:noteAuthentication,onPostLoginFailure:()=>{status.textContent='Signed in · could not start synchronization. Try Sync again.';},onSignedIn:async()=>{await knowledgeUI.signedIn();if(knowledgeUI.active)return syncEvents();return launch();},onDisconnected:()=>knowledgeUI.disconnected()});
+if(new URLSearchParams(location.search).get('porter-diagnostics')==='1')installDiagnostics(async()=>diagnosticsSnapshot({store,packet,activeRun,trace,revision:__PORTER_REVISION__,online:navigator.onLine,sw:await workerIdentity(),swError,lastError:lastRequestError,attempt:latestAttempt,authentication:lastAuthentication,update:updates?.snapshot()}));
 addEventListener('online',()=>{if(!interactions.active){if(knowledgeUI.active)knowledgeUI.sync();else launch();}});
 launch();document.querySelector('#refresh').onclick=()=>{if(!interactions.active){if(knowledgeUI.active)knowledgeUI.sync();else launch();}};
 if(!import.meta.env.DEV&&'serviceWorker'in navigator)updates=installUpdates({interactions,revision:__PORTER_REVISION__,onError:error=>{swError=error;}});
