@@ -115,13 +115,16 @@ export async function syncPacket({
     return candidate;
   }catch(error){
     if(!isCurrent())throw new SyncFailure(phase,'cancelled','superseded');
-    if(previous&&preserveOnFailure&&error.category!=='cancelled')return previous.packet;
-    if(error instanceof SyncFailure)throw error;
-    if(controller.signal.aborted)throw controller.signal.reason;
-    if(phase==='candidate_commit')throw new SyncFailure(phase,'persistence','commit_failed');
-    if(phase==='cache_read')throw new SyncFailure(phase,'persistence','local_read_failed');
-    if(phase==='artifact_verification')throw new SyncFailure(phase,'artifact','artifact_verification');
-    throw transportFailure(phase,error,controller.signal);
+    let failure=error;
+    if(!(failure instanceof SyncFailure)){
+      if(controller.signal.aborted)failure=controller.signal.reason;
+      else if(phase==='candidate_commit')failure=new SyncFailure(phase,'persistence','commit_failed');
+      else if(phase==='cache_read')failure=new SyncFailure(phase,'persistence','local_read_failed');
+      else if(phase==='artifact_verification')failure=new SyncFailure(phase,'artifact','artifact_verification');
+      else failure=transportFailure(phase,error,controller.signal);
+    }
+    if(previous&&preserveOnFailure&&failure.category!=='cancelled')return previous.packet;
+    throw failure;
   }finally{clearTimeout(timer);}
 }
 const replays=new WeakMap();

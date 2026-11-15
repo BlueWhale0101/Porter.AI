@@ -3,12 +3,12 @@ import { responseCorrelation, SyncFailure, transportFailure } from './sync-failu
 // A packet deadline stops this caller waiting without aborting a shared renewal.
 async function waitForRenewal(renewal,signal) {
   if(!signal)return renewal;
-  signal.throwIfAborted();
   let abort;
   try{
     return await Promise.race([renewal,new Promise((_,reject)=>{
       abort=()=>reject(signal.reason);
-      signal.addEventListener('abort',abort,{once:true});
+      if(signal.aborted)abort();
+      else signal.addEventListener('abort',abort,{once:true});
     })]);
   }finally{signal.removeEventListener('abort',abort);}
 }
