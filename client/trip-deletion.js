@@ -15,8 +15,8 @@ export function installTripDeletion({dialog,trip,cached,api,store,esc,onDeleted}
       area.insertBefore(confirm,message);confirm.querySelector('#cancel-delete').onclick=()=>{confirm.remove();form.hidden=false;start.hidden=false;};
       confirm.querySelector('#confirm-delete').onclick=async()=>{
         const buttons=[...dialog.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);const prevent=e=>e.preventDefault();dialog.addEventListener('cancel',prevent);message.textContent='Deleting Trip…';let accepted=false;
-        try{const result=await api.deleteTrip(trip.id,preview.expected);accepted=true;await store.removeTrip(trip.id);await onDeleted(trip.id,result);}
-        catch(error){message.textContent=accepted?'Deleted on the server. Local cleanup failed; retry to clear this device.':error.code==='revision_conflict'?'This Trip changed while you were reviewing it. Nothing was deleted. Close and Sync before trying again.':error.code==='not_found'?'Trip is already unavailable. Close and Sync to clear this device.':`Deletion was not confirmed. Your local Trip is retained. ${error.message}`;}
+        try{const result=await api.deleteTrip(trip.id,preview.expected);if(result?.deleted!==true||result.tripId!==trip.id)throw new Error('The server did not confirm deletion.');accepted=true;await store.removeTrip(trip.id);await onDeleted(trip.id,result);}
+        catch(error){message.textContent=accepted?'Deleted on the server. Local cleanup failed; retry to clear this device.':error.code==='revision_conflict'?'This Trip changed while you were reviewing it. Nothing was deleted. Close and Sync before trying again.':error.code==='not_found'?'The server could not confirm deletion. Your local Trip is retained.':`Deletion was not confirmed. Your local Trip is retained. ${error.message}`;}
         finally{dialog.removeEventListener('cancel',prevent);buttons.forEach(b=>b.disabled=false);}
       };
     }catch(error){message.textContent=error.message;}finally{start.disabled=false;}
