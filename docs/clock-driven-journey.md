@@ -58,7 +58,7 @@ Measured against Increment 1 at `d1dd673` with the same dependency tree. Packet 
 
 | Measurement | Increment 1 | Clock-driven Journey |
 | --- | ---: | ---: |
-| Vite production JavaScript, raw / gzip (decimal kB) | 232.11 / 69.19 | 236.06 / 70.56 |
+| Vite production JavaScript, raw / gzip (decimal kB) | 232.11 / 69.19 | 236.25 / 70.65 |
 | Packet JSON, six currently valid notes (bytes) | 42,215 | 42,357 |
 | Packet JSON, same six plus one future note (bytes) | 42,216 | 42,704 |
 | Median cached first useful render, nine offline loads in mobile Chromium | 68.9 ms | 48.4 ms |

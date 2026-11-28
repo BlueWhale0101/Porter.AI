@@ -171,3 +171,17 @@ test('acknowledged Event overlay remains available until the other cached perspe
   await retireEventReceipts(store,fresh);
   assert.deepEqual(await store.allMutations(),[]);
 });
+
+test('retiring successive acknowledged edits cannot restore an older visible participant assignment',async()=>{
+  const {retireEventReceipts} = await import('../client/event-mutations.js');
+  const before=event('activity',opens,closes,{participants:['a'],revision:2});
+  const after={...before,participants:['b'],revision:3};
+  const family={...trip,participants:[{id:'a'},{id:'b'}]}, store=new MemoryStore();
+  const packet=p=>buildTripPacket({trip:family,events:[after],knowledge:[]},{generatedAt,perspectiveParticipantId:p});
+  await store.putPacket(trip.id,{packet:packet('a'),meta:{usable:true}},'a');
+  for(const result of [before,after])await store.enqueue({id:'edit-'+result.revision,localEvent:true,undoUntil:0,
+    operation:'updateEvent',state:'acknowledged',arguments:{tripId:trip.id,eventId:result.id},result});
+  await retireEventReceipts(store,packet(null));
+  assert.deepEqual(await store.allMutations(),[]);
+  assert.deepEqual(withPendingEvents(packet('a'),await store.allMutations(),incident).current.now,[]);
+});

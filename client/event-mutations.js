@@ -56,19 +56,27 @@ export async function replayEvent(store,api,id){
   }
 }
 export async function retireEventReceipts(store,packet,now=Date.now()){
-  const eligible = row => row.state==='acknowledged' && row.arguments?.tripId===packet.trip.id &&
-    row.localEvent && row.undoUntil<now && row.result?.id;
-  if (!(await store.allMutations()).some(eligible)) return;
+  const acknowledged = row => row.state==='acknowledged' && row.arguments?.tripId===packet.trip.id &&
+    row.localEvent && row.result?.id;
+  if (!(await store.allMutations()).some(row => acknowledged(row) && row.undoUntil<now)) return;
   const selections = await cachedSelections(store,packet);
   await store.changeQueue(rows=>{
-    const remove = rows.filter(row => eligible(row) &&
-      !rows.some(y=>y.dependsOn===row.id && y.state!=='acknowledged') &&
-      selections.every(p => {
-        const event = p.events[row.result.id];
-        if (event) return event.revision >= row.result.revision;
-        const participants = row.result.participants ?? [];
-        return p.perspectiveParticipantId && participants.length && !participants.includes(p.perspectiveParticipantId);
-      }));
-    for(const item of remove)rows.splice(rows.indexOf(item),1);
+    // Retire an Event's acknowledgements together. Removing a newer change
+    // alone could expose an older participant assignment on a stale selection.
+    const groups = new Map();
+    for (const row of rows.filter(acknowledged)) {
+      if (!groups.has(row.result.id)) groups.set(row.result.id,[]);
+      groups.get(row.result.id).push(row);
+    }
+    for (const [id,receipts] of groups) {
+      if (receipts.some(r => r.undoUntil>=now || rows.some(y => y.dependsOn===r.id && y.state!=='acknowledged'))) continue;
+      const latest = receipts.reduce((a,b) => a.result.revision>=b.result.revision ? a : b).result;
+      const reconciled = selections.every(p => {
+        const event = p.events[id];
+        if (event) return event.revision>=latest.revision;
+        return p.perspectiveParticipantId && latest.participants?.length && !latest.participants.includes(p.perspectiveParticipantId);
+      });
+      if (reconciled) for (const receipt of receipts) rows.splice(rows.indexOf(receipt),1);
+    }
   });
 }
