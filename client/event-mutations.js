@@ -1,3 +1,4 @@
+import { cachedSelections } from './journey-receipts.js';
 import { validateTemporal } from '../src/temporal.js';
 import { validateEventVisual } from '../src/event-visual.js';
 import { mutationFailure } from './conflicts.js';
@@ -19,7 +20,7 @@ export async function recordEvent(store,mutation,before=null,now=Date.now()){
     const prior=before?.pendingMutationId?rows.find(x=>x.id===before.pendingMutationId):null;
     if(prior&&prior.state!=='acknowledged')prior.localEvent=true;
     const inverse=mutation.operation==='updateEvent'?Object.fromEntries(Object.keys(mutation.arguments.patch).map(key=>[key,structuredClone(before?.[key]??null)])):null;
-    const value={...structuredClone(mutation),id:crypto.randomUUID(),localEvent:true,createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString(),sequence:nextSequence(rows),undoUntil:now+UNDO_MS,inverse,dependsOn:prior?.id??null};
+    const value={...structuredClone(mutation),id:crypto.randomUUID(),localEvent:true,createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString(),sequence:nextSequence(rows),undoUntil:now+UNDO_MS,...(mutation.arguments.patch?.participants && {projectionBase:structuredClone(before)}),inverse,dependsOn:prior?.id??null};
     rows.push(value);return value;
   });
 }
@@ -47,15 +48,27 @@ export async function replayEvent(store,api,id){
   });
   if(!claimed)return;
   try{
-    const result=await api.mutate(claimed);
+    const {projectionBase,...request}=claimed;
+    const result=await api.mutate(request);
     await store.changeQueue(rows=>{const item=rows.find(x=>x.id===id);if(item){item.state='acknowledged';item.result=result;item.updatedAt=new Date().toISOString();delete item.error;delete item.errorCode;delete item.currentRevision;}});
   }catch(error){
     await store.changeQueue(rows=>{const item=rows.find(x=>x.id===id);if(item){item.state=error.code==='revision_conflict'?'conflict':'pending';item.error=error.message;Object.assign(item,mutationFailure(error));}});throw error;
   }
 }
 export async function retireEventReceipts(store,packet,now=Date.now()){
+  const eligible = row => row.state==='acknowledged' && row.arguments?.tripId===packet.trip.id &&
+    row.localEvent && row.undoUntil<now && row.result?.id;
+  if (!(await store.allMutations()).some(eligible)) return;
+  const selections = await cachedSelections(store,packet);
   await store.changeQueue(rows=>{
-    const remove=rows.filter(x=>x.state==='acknowledged'&&x.undoUntil<now&&x.result?.revision<=packet.events[x.result.id]?.revision&&!rows.some(y=>y.dependsOn===x.id&&y.state!=='acknowledged'));
+    const remove = rows.filter(row => eligible(row) &&
+      !rows.some(y=>y.dependsOn===row.id && y.state!=='acknowledged') &&
+      selections.every(p => {
+        const event = p.events[row.result.id];
+        if (event) return event.revision >= row.result.revision;
+        const participants = row.result.participants ?? [];
+        return p.perspectiveParticipantId && participants.length && !participants.includes(p.perspectiveParticipantId);
+      }));
     for(const item of remove)rows.splice(rows.indexOf(item),1);
   });
 }

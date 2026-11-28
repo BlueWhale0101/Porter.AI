@@ -1,4 +1,5 @@
-import { buildTripPacket } from '../src/projection.js';
+import { withParkingOperations } from '../src/parking.js';
+import { packetInputs, projectJourney } from '../src/projection.js';
 const clone = value => structuredClone(value);
 import { calendarParts,validTimezone } from '../src/temporal.js';
 const localFormatters=new Map();
@@ -43,29 +44,43 @@ const compareEvents = (a, b) => (Date.parse(a.temporal?.start ?? '') || Infinity
 const dateRange = (start, end) => { const days=[]; for(let cursor=new Date(`${start}T00:00:00Z`);cursor<=new Date(`${end}T00:00:00Z`);cursor.setUTCDate(cursor.getUTCDate()+1)) days.push(cursor.toISOString().slice(0,10)); return days; };
 
 /** A narrow display-only overlay: source TripPacket is never mutated. */
-export function withPendingEvents(packet, mutations = []) {
-  const result=clone(packet),events={...result.events},aliases=new Map(),pendingIds=new Set();
-  let changed=false;
+export function prepareJourney(packet, mutations = [], removedIds = []) {
+  const events={...packet.events},aliases=new Map(),pendingIds=new Set();
+
   for(const mutation of mutations){
     const args=mutation.arguments??{};if(args.tripId!==packet.trip.id)continue;
     const acknowledged=mutation.state==='acknowledged',pending=!acknowledged;
     if(mutation.operation==='createEvent'&&args.event?.title?.trim()){
       const localId=`pending:${mutation.id}`,id=mutation.result?.id??localId;aliases.set(localId,id);
-      if(!acknowledged||!events[id]||events[id].revision<mutation.result.revision){events[id]={...clone(args.event),...clone(mutation.result??{}),id,tripId:packet.trip.id,parentEventId:args.event.parentEventId??null,revision:mutation.result?.revision??0,pending,pendingMutationId:mutation.id,pendingConflict:mutation.state==='conflict'};changed=true;}
+      if(!acknowledged||!events[id]||events[id].revision<mutation.result.revision){events[id]={...clone(args.event),...clone(mutation.result??{}),id,tripId:packet.trip.id,parentEventId:args.event.parentEventId??null,revision:mutation.result?.revision??0,pending,pendingMutationId:mutation.id,pendingConflict:mutation.state==='conflict'};}
       if(pending)pendingIds.add(id);
     }
     if(mutation.operation==='updateEvent'){
       const id=mutation.result?.id??aliases.get(args.eventId)??args.eventId;
       if(acknowledged&&events[id]?.revision>=mutation.result.revision)continue;
-      if(events[id]){events[id]={...events[id],...clone(mutation.result??args.patch??{}),pending,pendingMutationId:mutation.id,pendingConflict:mutation.state==='conflict'};changed=true;if(pending)pendingIds.add(id);}
+      const base = events[id] ?? mutation.result ?? mutation.projectionBase;
+      if (base) {
+        events[id] = {...base,...clone(mutation.result ?? args.patch ?? {}),id,pending,
+          pendingMutationId:mutation.id,pendingConflict:mutation.state==='conflict'};
+        if (pending) pendingIds.add(id);
+      }
     }
   }
-  if(!changed)return {...result,events,pendingEventIds:pendingIds};
-  // Reuse the authoritative projection rules for optimistic Journey placement.
-  const sourceEvents=Object.values(events).map(e=>({participants:[],artifacts:[],...e}));
-  const knowledge=(packet.knowledge??[]).map(k=>({participantIds:[],validityWindows:[],tags:[],relatedEventIds:[],...k}));
-  const projected=buildTripPacket({trip:packet.trip,events:sourceEvents,knowledge},{perspectiveParticipantId:packet.perspectiveParticipantId??null});
-  return {...result,events:Object.fromEntries(Object.keys(projected.events).map(id=>[id,events[id]])),current:projected.current,eventTree:projected.eventTree,pendingEventIds:pendingIds};
+  const removed = new Set(removedIds);
+  const source = packetInputs(packet);
+  source.events = Object.values(events).filter(e => !removed.has(e.id));
+  source.knowledge = withParkingOperations(source.knowledge,mutations,packet.trip.id);
+  return {source, pendingEventIds:pendingIds};
+}
+
+export function localJourney(packet, prepared, now) {
+  const view = projectJourney(prepared.source,packet.perspectiveParticipantId,now);
+  return {...packet, ...view, pendingEventIds:prepared.pendingEventIds,
+    projectionCoverage:packet.projectionInput?.version === 1 ? 'complete' : 'legacy-partial'};
+}
+
+export function withPendingEvents(packet, mutations = [], now = new Date().toISOString()) {
+  return localJourney(packet,prepareJourney(packet,mutations),now);
 }
 
 export function itineraryProjection(packet) {
