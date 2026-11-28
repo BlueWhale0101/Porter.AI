@@ -15,20 +15,36 @@ export function doorEntries(packet,eventId,artifacts){const event=packet.events[
 export function ticketSummary(packet,eventId,artifacts){const eventAccess=(packet.access??[]).filter(x=>x.eventId===eventId);const r=readiness({...packet,access:eventAccess},artifacts);return r.external? 'Requires venue app':`${r.ready}/${r.required} ready offline`;}
 export function requestLocation(geolocation){return new Promise((resolve,reject)=>{if(!geolocation?.getCurrentPosition){reject(new Error('Geolocation is unavailable on this device.'));return;}geolocation.getCurrentPosition(position=>resolve({latitude:position.coords.latitude,longitude:position.coords.longitude,capturedAt:new Date(position.timestamp).toISOString()}),()=>reject(new Error('Location unavailable. Please try again when location is available.')),{enableHighAccuracy:false,timeout:10000});});}
 
+const formats = new Map();
+function clockFormat(locale,zone,style) {
+  const key = [locale,zone,style].join('|');
+  if (!formats.has(key)) {
+    const options = {
+      day:{year:'numeric',month:'2-digit',day:'2-digit'},
+      date:{year:'numeric',month:'short',day:'numeric'},
+      time:{hour:'numeric',minute:'2-digit'},
+      endpoint:{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}
+    };
+    if (formats.size >= 96) formats.clear();
+    formats.set(key,new Intl.DateTimeFormat(locale,{timeZone:zone,...options[style]}));
+  }
+  return formats.get(key);
+}
+
 /** Compact only when both endpoints share a known zone and calendar day. */
 export function journeyTime(event,{now=new Date().toISOString(),locale='en-US'}={}){
   const t=event.temporal??{},zone=t.startTimezone,endZone=t.endTimezone??zone;
   const full=()=>{const parts=eventTime(event);return `${parts.departure??parts.start??'Timing not set'}${parts.arrival?' → '+parts.arrival:parts.end?' – '+parts.end:''}`;};
   if(!t.start||!zone)return full();
   try{
-    const day=value=>new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+    const day=value=>clockFormat('en-CA',zone,'day').format(new Date(value));
     if(event.movement||endZone!==zone){
-      const stamp=(value,timeZone)=>new Intl.DateTimeFormat(locale,{timeZone,year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(value));
+      const stamp=(value,timeZone)=>clockFormat(locale,timeZone,'endpoint').format(new Date(value));
       return stamp(t.start,zone)+(t.end?' → '+stamp(t.end,endZone):'');
     }
     if(t.end&&day(t.start)!==day(t.end))return full();
-    const formatter=new Intl.DateTimeFormat(locale,{timeZone:zone,hour:'numeric',minute:'2-digit'});
+    const formatter=clockFormat(locale,zone,'time');
     const time=(t.end?formatter.formatRange(new Date(t.start),new Date(t.end)):formatter.format(new Date(t.start))).replace(/\s*–\s*/g,'–').replace(/\u202f/g,' ');
-    return (day(t.start)===day(now)?'':new Intl.DateTimeFormat(locale,{timeZone:zone,year:'numeric',month:'short',day:'numeric'}).format(new Date(t.start))+' · ')+time;
+    return (day(t.start)===day(now)?'':clockFormat(locale,zone,'date').format(new Date(t.start))+' · ')+time;
   }catch{return full();}
 }

@@ -36,13 +36,13 @@ export async function createFixtures(state='ready') {
   if(state==='dynamic')opera.booking.expectedAdmissions.forEach(a=>a.status='external_dynamic');
   if(state==='dynamic')opera.artifacts.forEach(a=>a.appUrl='https://example.com/venue-app');
   for(const perspective of [null,...participants.map(p=>p.id)]) {
-    const packet=buildTripPacket(source,{now:FIXTURE_NOW,perspectiveParticipantId:perspective});
+    const packet=buildTripPacket(source,{generatedAt:FIXTURE_NOW,perspectiveParticipantId:perspective});
     await store.putPacket(source.trip.id,{packet,meta:{usable:true,lastSync:FIXTURE_NOW}},perspective);
   }
   for(const [i,a] of opera.artifacts.entries())if(state!=='missing'&&(state!=='partial'||i<2))await store.putArtifact({id:artifactCacheId(source.trip.id,opera.id,a.id),tripId:source.trip.id,eventId:opera.id,artifactId:a.id,state:'verified',version:a.version,checksum:sum,mediaType:a.mediaType,data:bytes});
   for(const lifecycle of ['upcoming','draft','archived']) {
     const trip={...source.trip,id:`demo-${lifecycle}`,title:{upcoming:'Across the African continent',draft:'A week without plans',archived:'Prague, remembered'}[lifecycle],lifecycle};
-    await store.putPacket(trip.id,{packet:buildTripPacket({trip,events:[],knowledge:[]},{now:FIXTURE_NOW}),meta:{usable:true,lastSync:FIXTURE_NOW}});
+    await store.putPacket(trip.id,{packet:buildTripPacket({trip,events:[],knowledge:[]},{generatedAt:FIXTURE_NOW}),meta:{usable:true,lastSync:FIXTURE_NOW}});
   }
   if(state==='pending'||state==='conflict')await store.enqueue({id:'demo-edit',operation:'updateEvent',state:state==='conflict'?'conflict':'pending',arguments:{tripId:source.trip.id,eventId:'opera',expectedRevision:1,patch:{description:'Bring the three printed passes as well.'}}});
   if(state!=='empty')await store.setActiveTrip(source.trip.id);
